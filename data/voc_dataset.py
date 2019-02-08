@@ -112,19 +112,24 @@ class VOCBboxDataset:
 
             difficult.append(int(obj.find('difficult').text))
             bndbox_anno = obj.find('bndbox')
+            
             # subtract 1 to make pixel indexes 0-based
             bbox.append([
-                int(bndbox_anno.find(tag).text) - 1
+                int(float(bndbox_anno.find(tag).text)) - 1
                 for tag in ('ymin', 'xmin', 'ymax', 'xmax')])
             name = obj.find('name').text.lower().strip()
-            label.append(VOC_BBOX_LABEL_NAMES.index(name))
+            #print(name) 
+            if name not in VOC_BBOX_LABEL_NAMES:
+                print(name)
+            else:
+                label.append(VOC_BBOX_LABEL_NAMES.index(name))
         bbox = np.stack(bbox).astype(np.float32)
         label = np.stack(label).astype(np.int32)
         # When `use_difficult==False`, all elements in `difficult` are False.
         difficult = np.array(difficult, dtype=np.bool).astype(np.uint8)  # PyTorch don't support np.bool
 
         # Load a image
-        img_file = os.path.join(self.data_dir, 'JPEGImages', id_ + '.jpg')
+        img_file = os.path.join(self.data_dir, 'JPEGImages', id_ + '.png')
         img = read_image(img_file, color=True)
 
         # if self.return_difficult:
@@ -135,23 +140,15 @@ class VOCBboxDataset:
 
 
 VOC_BBOX_LABEL_NAMES = (
-    'aeroplane',
-    'bicycle',
-    'bird',
-    'boat',
-    'bottle',
+    'van',
+    'cyclist',
+    'person',
+    'car',
     'bus',
     'car',
-    'cat',
-    'chair',
-    'cow',
-    'diningtable',
-    'dog',
-    'horse',
     'motorbike',
-    'person',
-    'pottedplant',
-    'sheep',
-    'sofa',
-    'train',
-    'tvmonitor')
+    'dontcare',
+    'truck',
+    'misc',
+    'tram',
+    'person_sitting')

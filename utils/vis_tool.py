@@ -8,31 +8,31 @@ import visdom
 matplotlib.use('Agg')
 from matplotlib import pyplot as plot
 
-# from data.voc_dataset import VOC_BBOX_LABEL_NAMES
+from data.voc_dataset import VOC_BBOX_LABEL_NAMES
 
 
-VOC_BBOX_LABEL_NAMES = (
-    'fly',
-    'bike',
-    'bird',
-    'boat',
-    'pin',
-    'bus',
-    'c',
-    'cat',
-    'chair',
-    'cow',
-    'table',
-    'dog',
-    'horse',
-    'moto',
-    'p',
-    'plant',
-    'shep',
-    'sofa',
-    'train',
-    'tv',
-)
+#VOC_BBOX_LABEL_NAMES = (
+#    'fly',
+#    'bike',
+#    'bird',
+#    'boat',
+#    'pin',
+#    'bus',
+#    'c',
+#    'cat',
+#    'chair',
+#    'cow',
+#    'table',
+#    'dog',
+#    'horse',
+#    'moto',
+#    'p',
+#    'plant',
+#    'shep',
+#    'sofa',
+#    'train',
+#    'tv',
+#)
 
 
 def vis_image(img, ax=None):
@@ -175,7 +175,7 @@ class Visualizer(object):
     """
 
     def __init__(self, env='default', **kwargs):
-        self.vis = visdom.Visdom(env=env, use_incoming_socket=False, **kwargs)
+        self.vis = visdom.Visdom(env=env, **kwargs)
         self._vis_kw = kwargs
 
         # e.g.('loss',23) the 23th value of loss
