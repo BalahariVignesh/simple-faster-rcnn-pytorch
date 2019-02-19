@@ -4,7 +4,7 @@ import torch as t
 import numpy as np
 import cupy as cp
 from utils import array_tool as at
-from model.utils.bbox_tools import loc2bbox
+from model.utils.bbox_tools import loc2bbox, bbox2loc
 from model.utils.nms import non_maximum_suppression
 
 from torch import nn
@@ -267,6 +267,234 @@ class FasterRCNN(nn.Module):
         self.use_preset('evaluate')
         self.train()
         return bboxes, labels, scores
+
+    @nograd
+    def predict(self, imgs, gt_bboxes, gt_labels, sizes=None, visualize=False):
+        self.eval()
+        if visualize:
+            self.use_preset('visualize')
+            prepared_imgs = list()
+            sizes = list()
+            for img in imgs:
+                size = img.shape[1:]
+                img = preprocess(at.tonumpy(img))
+                prepared_imgs.append(img)
+                sizes.append(size)
+        else:
+             prepared_imgs = imgs 
+        bboxes = list()
+        labels = list()
+        scores = list()
+        for img, size in zip(prepared_imgs, sizes):
+            img = at.totensor(img[None]).float()
+            scale = img.shape[3] / size[1]
+            roi_cls_loc, roi_scores, rois, _ = self(img, scale=scale)
+            # We are assuming that batch size is 1.
+            roi_score = roi_scores.data
+            roi_cls_loc = roi_cls_loc.data
+            roi = at.totensor(rois) / scale
+
+            # Convert predictions to bounding boxes in image coordinates.
+            # Bounding boxes are scaled to the scale of the input images.
+            mean = t.Tensor(self.loc_normalize_mean).cuda(). \
+                repeat(self.n_class)[None]
+            std = t.Tensor(self.loc_normalize_std).cuda(). \
+                repeat(self.n_class)[None]
+
+            roi_cls_loc = (roi_cls_loc * std + mean)
+            roi_cls_loc = roi_cls_loc.view(-1, self.n_class, 4)
+            roi = roi.view(-1, 1, 4).expand_as(roi_cls_loc)
+            cls_bbox = loc2bbox(at.tonumpy(roi).reshape((-1, 4)),
+                                at.tonumpy(roi_cls_loc).reshape((-1, 4)))
+            cls_bbox = at.totensor(cls_bbox)
+            cls_bbox = cls_bbox.view(-1, self.n_class * 4)
+            # clip bounding box
+            cls_bbox[:, 0::2] = (cls_bbox[:, 0::2]).clamp(min=0, max=size[0])
+            cls_bbox[:, 1::2] = (cls_bbox[:, 1::2]).clamp(min=0, max=size[1])
+
+            prob = at.tonumpy(F.softmax(at.totensor(roi_score), dim=1))
+
+            raw_cls_bbox = at.tonumpy(cls_bbox)
+            raw_prob = at.tonumpy(prob)
+
+            bbox, label, score = self._suppress(raw_cls_bbox, raw_prob)
+            bboxes.append(bbox)
+            labels.append(label)
+            scores.append(score)
+
+        self.use_preset('evaluate')
+        self.train()
+        return bboxes, labels, scores
+    
+    @nograd
+    def train_ood_old(self, imgs, bboxes, labels, sizes=None, visualize=False):
+        """Produce features for calculating the MD OOD detector"""
+        self.eval()
+        if visualize:
+            self.use_preset('visualize')
+            prepared_imgs = list()
+            sizes = list()
+            for img in imgs:
+                size = img.shape[1:]
+                img = preprocess(at.tonumpy(img))
+                prepared_imgs.append(img)
+                sizes.append(size)
+        else:
+             prepared_imgs = imgs 
+
+        scores = list()
+        for img, size in zip(prepared_imgs, sizes):
+            img = at.totensor(img[None]).float()
+            scale = img.shape[3] / size[1]
+            
+            img_size = img.shape[2:]
+
+            #### From forward function
+            h = self.extractor(img)  # Get hidden features
+            
+            
+###### TODO: This code to be modified/reversed then removed            
+#             _, _, rois, roi_indices, _ = self.rpn(h, img_size, scale) # TO REMOVE: Replicate these outputs
+
+#             roi_cls_locs, roi_scores = self.head(h, rois, roi_indices)
+#             # We are assuming that batch size is 1.
+#             roi_score = roi_scores.data
+#             roi_cls_loc = roi_cls_loc.data
+#             roi = at.totensor(rois) / scale
+
+            # Convert predictions to bounding boxes in image coordinates.
+            # Bounding boxes are scaled to the scale of the input images.
+            mean = t.Tensor(self.loc_normalize_mean).cuda(). \
+                repeat(self.n_class)[None]
+            std = t.Tensor(self.loc_normalize_std).cuda(). \
+                repeat(self.n_class)[None]
+
+
+            #### TODO: Convert Image Coordinate Label back to ROI
+            # 1. Have label in terms of image coordinates
+#             print(bboxes)
+            
+            # 2. Convert label to same scale that RPN puts out
+            # Question: How to handle localizations? Assume 0 adjustments to bbox?
+#             bboxes = bbox2loc()
+            bboxes = at.totensor(bboxes) * scale
+            
+            # 3. Use scaled label to call self.head
+            roi_cls_locs, roi_scores, feats = self.head(h, bboxes, np.zeros(len(bboxes)), return_features=True)
+            
+            return feats
+            
+            # 4. Don't need to rescale labels again since they're passed in in image scale (use orig variable)
+            
+            # rois = 
+            # roi_indices = 
+    
+    
+            #### TODO: Get feature layer from self.head
+            # todo: modify self.head to return penultimate feature layer?
+            #roi_cls_locs, roi_scores = self.head(h, rois, roi_indices)
+            
+
+
+        
+        
+        ###########
+#             roi_cls_loc = (roi_cls_loc * std + mean)
+#             roi_cls_loc = roi_cls_loc.view(-1, self.n_class, 4)
+#             roi = roi.view(-1, 1, 4).expand_as(roi_cls_loc)
+#             cls_bbox = loc2bbox(at.tonumpy(roi).reshape((-1, 4)),
+#                                 at.tonumpy(roi_cls_loc).reshape((-1, 4)))
+#             cls_bbox = at.totensor(cls_bbox)
+#             cls_bbox = cls_bbox.view(-1, self.n_class * 4)
+#             # clip bounding box
+#             cls_bbox[:, 0::2] = (cls_bbox[:, 0::2]).clamp(min=0, max=size[0])
+#             cls_bbox[:, 1::2] = (cls_bbox[:, 1::2]).clamp(min=0, max=size[1])
+
+#             prob = at.tonumpy(F.softmax(at.totensor(roi_score), dim=1))
+
+#             raw_cls_bbox = at.tonumpy(cls_bbox)
+#             raw_prob = at.tonumpy(prob)
+
+#             bbox, label, score = self._suppress(raw_cls_bbox, raw_prob)
+#             bboxes.append(bbox)
+#             labels.append(label)
+#             scores.append(score)
+
+#         self.use_preset('evaluate')
+#         self.train()
+#         return bboxes, labels, scores
+    
+    
+    @nograd
+    def test_bbox_injection(self, imgs, bboxes, labels, sizes=None, visualize=False):
+        """Produce features for calculating the MD OOD detector"""
+        self.eval()
+        if visualize:
+            self.use_preset('visualize')
+            prepared_imgs = list()
+            sizes = list()
+            for img in imgs:
+                size = img.shape[1:]
+                img = preprocess(at.tonumpy(img))
+                prepared_imgs.append(img)
+                sizes.append(size)
+        else:
+             prepared_imgs = imgs 
+
+        scores = list()
+        bbxs = list()
+        labels = list()
+        for img, size in zip(prepared_imgs, sizes):
+            img = at.totensor(img[None]).float()
+            scale = img.shape[3] / size[1]
+            
+            img_size = img.shape[2:]
+
+            #### From forward function
+            h = self.extractor(img)  # Get hidden features
+
+            roi_cls_locs, roi_scores = self.head(h, bboxes, np.zeros(len(bboxes)))
+            # We are assuming that batch size is 1.
+            roi_score = roi_scores.data
+            roi_cls_loc = roi_cls_locs.data
+            roi = at.totensor(bboxes)
+
+            # Convert predictions to bounding boxes in image coordinates.
+            # Bounding boxes are scaled to the scale of the input images.
+            mean = t.Tensor(self.loc_normalize_mean).cuda(). \
+                repeat(self.n_class)[None]
+            std = t.Tensor(self.loc_normalize_std).cuda(). \
+                repeat(self.n_class)[None]
+
+            roi_cls_loc = (roi_cls_loc * std + mean)
+            roi_cls_loc = roi_cls_loc.view(-1, self.n_class, 4)
+            roi = roi.view(-1, 1, 4).expand_as(roi_cls_loc)
+            cls_bbox = loc2bbox(at.tonumpy(roi).reshape((-1, 4)),
+                                at.tonumpy(roi_cls_loc).reshape((-1, 4)))
+            cls_bbox = at.totensor(cls_bbox)
+            print(cls_bbox)
+            cls_bbox = cls_bbox.view(-1, self.n_class * 4)
+            
+            # clip bounding box
+            cls_bbox[:, 0::2] = (cls_bbox[:, 0::2]).clamp(min=0, max=size[0])
+            cls_bbox[:, 1::2] = (cls_bbox[:, 1::2]).clamp(min=0, max=size[1])
+
+            prob = at.tonumpy(F.softmax(at.totensor(roi_score), dim=1))
+            print(cls_bbox)
+            raw_cls_bbox = at.tonumpy(cls_bbox)
+            raw_prob = at.tonumpy(prob)
+            print(raw_cls_bbox)
+            bbox, label, score = self._suppress(raw_cls_bbox, raw_prob)
+            print(bbox)
+            print(raw_prob)
+            bbxs.append(bbox)
+            labels.append(label)
+            scores.append(score)
+
+        self.use_preset('evaluate')
+        self.train()
+        return bbxs, labels, scores    
+  
 
     def get_optimizer(self):
         """

@@ -3,6 +3,21 @@ from PIL import Image
 import random
 
 
+VOC_BBOX_LABEL_NAMES = (
+    'van',
+    'cyclist',
+    'person',
+    'car',
+    'bus',
+    'car',
+    'motorbike',
+    'dontcare',
+    'truck',
+    'misc',
+    'tram',
+    'person_sitting')
+
+
 def read_image(path, dtype=np.float32, color=True):
     """Read an image from a file.
 
@@ -39,6 +54,28 @@ def read_image(path, dtype=np.float32, color=True):
     else:
         # transpose (H, W, C) -> (C, H, W)
         return img.transpose((2, 0, 1))
+
+
+def read_bbox(f):
+    """Read the label data from file f and return a list of dicts of label parameters for 
+        each object in the image/label file. Expect unconverted KITTI label file"""
+    data = np.loadtxt(f, dtype=np.str, ndmin=2, delimiter=' ')
+
+    def extract_label_row(row):
+        return VOC_BBOX_LABEL_NAMES.index(row[0].lower())
+    
+    def extract_bbox_row(row):
+        return [
+            float(row[5]),
+            float(row[4]),
+            float(row[7]),
+            float(row[6]),
+        ]
+    
+    labels = np.array(list(map(extract_label_row, data)), dtype=np.int32)
+    bboxes = np.array(list(map(extract_bbox_row, data)), dtype=np.float32)
+    
+    return bboxes, labels
 
 
 def resize_bbox(bbox, in_size, out_size):
