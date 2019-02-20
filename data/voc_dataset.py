@@ -140,15 +140,15 @@ class VOCBboxDataset:
 
 
 VOC_BBOX_LABEL_NAMES = (
+    'car',
     'van',
-    'cyclist',
-    'person',
-    'car',
     'bus',
-    'car',
-    'motorbike',
-    'dontcare',
     'truck',
-    'misc',
     'tram',
-    'person_sitting')
+    'person',
+    'person_sitting',
+    'cyclist',
+    'motorbike',
+    'misc',
+    'dontcare'
+)
