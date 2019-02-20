@@ -114,3 +114,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Checkpoints and datasets
+/checkpoints
+.vscode
+/VOCdevkit
+*.tar
+nohup.out
