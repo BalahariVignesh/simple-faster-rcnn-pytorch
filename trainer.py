@@ -105,7 +105,7 @@ class FasterRCNNTrainer(nn.Module):
         rpn_score = rpn_scores[0]
         rpn_loc = rpn_locs[0]
         roi = rois
-        print("label", label)
+
         # Sample RoIs and forward
         # it's fine to break the computation graph of rois, 
         # consider them as constant input
@@ -155,7 +155,7 @@ class FasterRCNNTrainer(nn.Module):
             gt_roi_label.data,
             self.roi_sigma)
 
-        roi_cls_loss = nn.CrossEntropyLoss()(roi_score, gt_roi_label.cuda())
+        roi_cls_loss = nn.CrossEntropyLoss(ignore_index=-1)(roi_score, gt_roi_label.cuda()) # NOTE: ignore index needed here?
 
         self.roi_cm.add(at.totensor(roi_score, False), gt_roi_label.data.long())
 

@@ -13,8 +13,8 @@ VOC_BBOX_LABEL_NAMES = (
     'person_sitting',
     'cyclist',
     'motorbike',
-    'misc',
-    'dontcare'
+    'misc'
+    # 'dontcare
 )
 
 

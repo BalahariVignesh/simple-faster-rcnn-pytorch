@@ -13,7 +13,12 @@ class Config:
     num_workers = 8
     test_num_workers = 8
 
-    num_fg_classes = 11
+    num_fg_classes = 10
+    
+    # Don't care class present (as in kitti data)
+    # Should not be counted in num_fg_classes and be listed as the final label in VOC_BBOX_LABEL_NAMES
+    # Will treat all objects not present in VOC_BBOX_LABEL_NAMES as unlabeled and not backpropagate errors from these classes
+    dont_care_class = True
 
     # sigma for l1_smooth_loss
     rpn_sigma = 3.

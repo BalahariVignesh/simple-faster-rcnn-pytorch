@@ -1,9 +1,12 @@
+from __future__ import  absolute_import
+
 import os
 import xml.etree.ElementTree as ET
 
 import numpy as np
 
 from .util import read_image
+from utils.config import opt
 
 
 class VOCBboxDataset:
@@ -119,8 +122,9 @@ class VOCBboxDataset:
                 for tag in ('ymin', 'xmin', 'ymax', 'xmax')])
             name = obj.find('name').text.lower().strip()
             #print(name) 
-            if name not in VOC_BBOX_LABEL_NAMES:
-                print(name)
+            if name not in VOC_BBOX_LABEL_NAMES and opt.dont_care_class:
+                # print("treating class '{}' as 'dontcare'".format(name))
+                label.append(-1)  # All -1 gt_labels should not be backpropagated during training
             else:
                 label.append(VOC_BBOX_LABEL_NAMES.index(name))
         bbox = np.stack(bbox).astype(np.float32)
@@ -149,6 +153,6 @@ VOC_BBOX_LABEL_NAMES = (
     'person_sitting',
     'cyclist',
     'motorbike',
-    'misc',
-    'dontcare'
+    'misc'
+    # 'dontcare'
 )
