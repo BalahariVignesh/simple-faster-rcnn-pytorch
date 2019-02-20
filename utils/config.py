@@ -13,6 +13,8 @@ class Config:
     num_workers = 8
     test_num_workers = 8
 
+    num_fg_classes = 11
+
     # sigma for l1_smooth_loss
     rpn_sigma = 3.
     roi_sigma = 1.

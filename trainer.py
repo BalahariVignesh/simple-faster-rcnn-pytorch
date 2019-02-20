@@ -59,7 +59,7 @@ class FasterRCNNTrainer(nn.Module):
 
         # indicators for training status
         self.rpn_cm = ConfusionMeter(2)
-        self.roi_cm = ConfusionMeter(21)
+        self.roi_cm = ConfusionMeter(opt.num_fg_classes + 1)
         self.meters = {k: AverageValueMeter() for k in LossTuple._fields}  # average loss
 
     def forward(self, imgs, bboxes, labels, scale):
@@ -105,7 +105,7 @@ class FasterRCNNTrainer(nn.Module):
         rpn_score = rpn_scores[0]
         rpn_loc = rpn_locs[0]
         roi = rois
-
+        print("label", label)
         # Sample RoIs and forward
         # it's fine to break the computation graph of rois, 
         # consider them as constant input
