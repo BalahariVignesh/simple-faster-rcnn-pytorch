@@ -1,4 +1,4 @@
-nohup python -m visdom.server &
+# nohup python -m visdom.server &
 
 #sensible-browser http://localhost:8097
 
