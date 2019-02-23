@@ -7,11 +7,11 @@ from pprint import pprint
 
 class Config:
     # data
-    voc_data_dir = '/home/cy/.chainer/dataset/pfnet/chainercv/voc/VOCdevkit/VOC2007/'
+    voc_data_dir = "/home/tadenoud/Documents/kitti/VOC2012/"
     min_size = 600  # image resize
     max_size = 1000 # image resize
-    num_workers = 8
-    test_num_workers = 8
+    num_workers = 0
+    test_num_workers = 0
 
     num_fg_classes = 10
     

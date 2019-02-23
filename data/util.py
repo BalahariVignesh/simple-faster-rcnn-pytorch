@@ -56,12 +56,15 @@ def read_image(path, dtype=np.float32, color=True):
         return img.transpose((2, 0, 1))
 
 
-def read_bbox(f):
+def read_bbox(f, ignore_dontcare=False):
     """Read the label data from file f and return a list of dicts of label parameters for 
         each object in the image/label file. Expect unconverted KITTI label file"""
     data = np.loadtxt(f, dtype=np.str, ndmin=2, delimiter=' ')
 
     def extract_label_row(row):
+        if ignore_dontcare and row[0].lower() == 'dontcare':
+            return -1
+        
         return VOC_BBOX_LABEL_NAMES.index(row[0].lower())
     
     def extract_bbox_row(row):
@@ -74,6 +77,10 @@ def read_bbox(f):
     
     labels = np.array(list(map(extract_label_row, data)), dtype=np.int32)
     bboxes = np.array(list(map(extract_bbox_row, data)), dtype=np.float32)
+
+    if ignore_dontcare:
+        bboxes = bboxes[labels != -1]  
+        labels = labels[labels != -1]
     
     return bboxes, labels
 
