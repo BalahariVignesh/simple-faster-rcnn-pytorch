@@ -6,6 +6,7 @@ import cupy as cp
 from utils import array_tool as at
 from model.utils.bbox_tools import loc2bbox, bbox2loc, bbox_iou
 from model.utils.nms import non_maximum_suppression
+from model.utils.creator_tool import AnchorTargetCreator, ProposalTargetCreator
 
 from torch import nn
 from data.dataset import preprocess
@@ -184,6 +185,34 @@ class FasterRCNN(nn.Module):
         score = np.concatenate(score, axis=0).astype(np.float32)
         return bbox, label, score
 
+    def _suppress_with_feats(self, raw_cls_bbox, raw_prob, raw_head_feats):
+        bbox = list()
+        label = list()
+        score = list()
+        features = list()
+        # skip cls_id = 0 because it is the background class
+        for l in range(1, self.n_class):
+            cls_bbox_l = raw_cls_bbox.reshape((-1, self.n_class, 4))[:, l, :]
+            feats_l = raw_head_feats
+            prob_l = raw_prob[:, l]
+            mask = prob_l > self.score_thresh
+            cls_bbox_l = cls_bbox_l[mask]
+            feats_l = feats_l[mask]
+            prob_l = prob_l[mask]
+            keep = non_maximum_suppression(
+                cp.array(cls_bbox_l), self.nms_thresh, prob_l)
+            keep = cp.asnumpy(keep)
+            bbox.append(cls_bbox_l[keep])
+            # The labels are in [0, self.n_class - 2].
+            label.append((l - 1) * np.ones((len(keep),)))
+            score.append(prob_l[keep])
+            features.append(feats_l[keep])
+        bbox = np.concatenate(bbox, axis=0).astype(np.float32)
+        label = np.concatenate(label, axis=0).astype(np.int32)
+        score = np.concatenate(score, axis=0).astype(np.float32)
+        features = np.concatenate(features, axis=0).astype(np.float32)
+        return bbox, label, score, features
+
     def _reform_raw_cls_bbox(self, raw_cls_bbox, raw_prob):
         """Reforms raw features to bboxes without non-maximum suppression."""
         bbox = list()
@@ -203,7 +232,7 @@ class FasterRCNN(nn.Module):
         return bbox, label, score
 
     @nograd
-    def predict(self, imgs,sizes=None,visualize=False):
+    def predict(self, imgs, sizes=None, visualize=False):
         """Detect objects from images.
 
         This method predicts objects for each image.
@@ -288,7 +317,103 @@ class FasterRCNN(nn.Module):
         return bboxes, labels, scores
 
 
-    def calc_mahal_means(self, features, labels):
+    @nograd
+    def predict_with_features(self, imgs, sizes=None, visualize=False):
+        """Same as predict function but also returns the head features for calculating mahalanobis distance."""
+        self.eval()
+        if visualize:
+            self.use_preset('visualize')
+            prepared_imgs = list()
+            sizes = list()
+            for img in imgs:
+                size = img.shape[1:]
+                img = preprocess(at.tonumpy(img))
+                prepared_imgs.append(img)
+                sizes.append(size)
+        else:
+             prepared_imgs = imgs 
+        bboxes = list()
+        labels = list()
+        scores = list()
+        features = list()
+        for img, size in zip(prepared_imgs, sizes):
+            img = at.totensor(img[None]).float()
+            scale = img.shape[3] / size[1]
+
+            h = self.extractor(img)
+            rpn_locs, rpn_scores, rois, roi_indices, _ = self.rpn(h, img.shape[2:], scale)
+            roi_cls_loc, roi_scores, head_feats = self.head(h, rois, roi_indices, return_features=True)
+
+            # We are assuming that batch size is 1.
+            roi_score = roi_scores.data
+            roi_cls_loc = roi_cls_loc.data
+            roi = at.totensor(rois) / scale
+
+            # Convert predictions to bounding boxes in image coordinates.
+            # Bounding boxes are scaled to the scale of the input images.
+            mean = t.Tensor(self.loc_normalize_mean).cuda(). \
+                repeat(self.n_class)[None]
+            std = t.Tensor(self.loc_normalize_std).cuda(). \
+                repeat(self.n_class)[None]
+
+            roi_cls_loc = (roi_cls_loc * std + mean)
+            roi_cls_loc = roi_cls_loc.view(-1, self.n_class, 4)
+            roi = roi.view(-1, 1, 4).expand_as(roi_cls_loc)
+            cls_bbox = loc2bbox(at.tonumpy(roi).reshape((-1, 4)),
+                                at.tonumpy(roi_cls_loc).reshape((-1, 4)))
+            cls_bbox = at.totensor(cls_bbox)
+            cls_bbox = cls_bbox.view(-1, self.n_class * 4)
+            # clip bounding box
+            cls_bbox[:, 0::2] = (cls_bbox[:, 0::2]).clamp(min=0, max=size[0])
+            cls_bbox[:, 1::2] = (cls_bbox[:, 1::2]).clamp(min=0, max=size[1])
+
+            prob = at.tonumpy(F.softmax(at.totensor(roi_score), dim=1))
+
+            raw_cls_bbox = at.tonumpy(cls_bbox)
+            raw_prob = at.tonumpy(prob)
+            head_feats = at.tonumpy(head_feats)
+
+            bbox, label, score, head_feats = self._suppress_with_feats(raw_cls_bbox, raw_prob, head_feats)
+            bboxes.append(bbox)
+            labels.append(label)
+            scores.append(score)
+            features.append(head_feats)
+
+        self.use_preset('evaluate')
+        self.train()
+        return bboxes, labels, scores, features
+
+    @nograd
+    def predict_mahalanobis(self, imgs, sizes=None, visualize=False):
+        bboxes, labels, scores, features = self.predict_with_features(imgs, sizes=sizes, visualize=visualize)
+        for i, f in enumerate(at.totensor(features[0])):
+            labels[0][i] = self.predict_label_mahalanobis(f)[0]
+
+        return bboxes, labels, scores
+    
+    @nograd
+    def predict_label_mahalanobis(self, features):
+        """Given a set of features, predict the class label. Requires training the mahal_means and inv_mahal_cov.
+            Return  label (int): The label of the class
+                    distance (float): Mahalanobis distance from nearest class mean
+        """
+        dists = list()
+        inv_cov = at.totensor(self.inv_mahal_cov.astype(np.float32))
+        
+        for mu_c in self.mahal_means:
+            if type(mu_c) == type(-1):
+                dists.append(float('inf'))
+                continue
+            mu_c = at.totensor(mu_c)
+            x = (features - mu_c)
+            dist = t.dot(t.mv(inv_cov, x), x)
+            dists.append(at.tonumpy(dist))
+        
+        dists = np.array(dists)
+        return dists.argmin(), dists.min()
+        
+
+    def _calc_mahal_means(self, features, labels):
         """Return the mahalanobis mean vector for each class.
             Shape will be [num_classes, feature_vector_length]
         """
@@ -306,7 +431,7 @@ class FasterRCNN(nn.Module):
         return means
 
 
-    def calc_mahal_covariance_matrix(self, features, labels):
+    def _calc_mahal_covariance_matrix(self, features, labels):
         """Return the mahalanobis covariance matrix for each class.
             Shape will be [num_classes, feature_vector_length, feature_vector_length]
         """
@@ -335,9 +460,9 @@ class FasterRCNN(nn.Module):
 
         return max(distances)
 
-
+    
     @nograd
-    def predict_features(self, imgs, gt_bboxes, gt_labels, scales):
+    def _predict_gt_features(self, imgs, gt_bboxes, gt_labels, scales):
         """Get the mahalanobis features needed to predict novelty score with predict_ood method."""
         self.eval()
         prepared_imgs = imgs 
@@ -408,27 +533,74 @@ class FasterRCNN(nn.Module):
         return features
 
 
+    @nograd
+    def _predict_gt_features_new(self, imgs, gt_bboxes, gt_labels, scale):
+        """Get the mahalanobis features needed to predict novelty score with predict_ood method."""
+        import pdb; pdb.set_trace()
+        self.eval()
+        n = gt_bboxes.shape[0]
+        if n != 1:
+            raise ValueError('Currently only batch size 1 is supported.')
+
+        _, _, H, W = imgs.shape
+        img_size = (H, W)
+
+        features = self.extractor(imgs)
+
+        rpn_locs, rpn_scores, rois, roi_indices, anchor = self.rpn(features, img_size, scale)
+
+        # Since batch size is one, convert variables to singular form
+        bbox = gt_bboxes[0]
+        label = gt_labels[0]
+        rpn_score = rpn_scores[0]
+        rpn_loc = rpn_locs[0]
+        roi = rois
+
+        # Sample RoIs and forward
+        # it's fine to break the computation graph of rois, 
+        # consider them as constant input
+        proposal_target_creator = ProposalTargetCreator()
+        sample_roi, gt_roi_loc, gt_roi_label = proposal_target_creator(
+            roi,
+            at.tonumpy(bbox),
+            at.tonumpy(label),
+            self.loc_normalize_mean,
+            self.loc_normalize_std)
+        # NOTE it's all zero because now it only support for batch=1 now
+        sample_roi_index = t.zeros(len(sample_roi))
+        roi_cls_loc, roi_score, feats = self.head(
+            features,
+            sample_roi,
+            sample_roi_index, return_features=True)
+
+        self.use_preset('evaluate')
+        self.train()
+        return feats
+
+
     def train_ood(self, dataloader, num_train=3711):
         features = []
         gt_labels = []
 
         print("extracting features")
-        for ii, (img, bbox_, label_, scale) in tqdm(enumerate(dataloader)):
-            features_ = self.predict_features(img, bbox_, label_, scale)
+        for ii, (img, bbox_, label_, scale) in tqdm(enumerate(dataloader), total=num_train):
+            img, bbox, label = img.cuda().float(), bbox_.cuda(), label_.cuda()
+            features_ = self._predict_gt_features(img, bbox, label, scale)
             features.append(at.tonumpy(features_[0]))
             gt_labels.append(at.tonumpy(label_[0]))
             
-            if ii == 3711:
+            if ii == num_train:
                 break
+
         features = np.concatenate(features, axis=0)
         gt_labels = np.concatenate(gt_labels, axis=0)
         
         self.features = features # TODO: remove this after testing
         print("calculating feature means")
-        self.mahal_means = self.calc_mahal_means(features, gt_labels)
+        self.mahal_means = self._calc_mahal_means(features, gt_labels)
         
         print("calculating feature covariance")
-        self.mahal_cov = self.calc_mahal_covariance_matrix(features, gt_labels)
+        self.mahal_cov = self._calc_mahal_covariance_matrix(features, gt_labels)
         
         print("inverting feature covariance")
         self.inv_mahal_cov = np.linalg.pinv(self.mahal_cov)
