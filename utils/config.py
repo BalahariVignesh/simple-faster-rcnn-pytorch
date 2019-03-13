@@ -13,7 +13,7 @@ class Config:
     num_workers = 0
     test_num_workers = 0
 
-    num_fg_classes = 10
+    num_fg_classes = 8
     
     # Don't care class present (as in kitti data)
     # Should not be counted in num_fg_classes and be listed as the final label in VOC_BBOX_LABEL_NAMES

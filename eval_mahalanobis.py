@@ -15,7 +15,7 @@ from train import eval, eval_mahal
 
 faster_rcnn = FasterRCNNVGG16()
 trainer = FasterRCNNTrainer(faster_rcnn).cuda()
-trainer.load('./checkpoints/fasterrcnn_02202207_0.6666273688828848')
+trainer.load('./checkpoints/fasterrcnn_02272314_0.6720744290992889')
 opt.caffe_pretrain=True # this model was trained from caffe-pretrained model
 
 #with open('kitti_features.pickle', 'rb') as f:
@@ -51,6 +51,7 @@ with open("baseline_results.pickle", 'rb') as f:
 print(baseline_result)
 
 # Evaluate mahalanobis distance method
+# baseline_result = eval(test_dataloader, trainer.faster_rcnn, test_num=3769)
 
 mahal_result = eval_mahal(test_dataloader, trainer.faster_rcnn, test_num=3769)
 

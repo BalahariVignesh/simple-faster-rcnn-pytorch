@@ -14,13 +14,11 @@ from matplotlib import pyplot as plot
 VOC_BBOX_LABEL_NAMES = (
     'c',
     'v',
-    'b',
     't',
     'tram',
     'p',
     'ps',
     'cyc',
-    'mb',
     'misc'
     # 'dc'
 )

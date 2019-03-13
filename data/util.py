@@ -6,13 +6,11 @@ import random
 VOC_BBOX_LABEL_NAMES = (
     'car',
     'van',
-    'bus',
     'truck',
     'tram',
     'person',
     'person_sitting',
     'cyclist',
-    'motorbike',
     'misc'
     # 'dontcare
 )
