@@ -286,7 +286,7 @@ class FasterRCNN(nn.Module):
         labels = list()
         scores = list()
         for img, size in zip(prepared_imgs, sizes):
-            img = at.totensor(img[None]).float()
+            img = at.totensor(img[None], cuda=True).float()
             scale = img.shape[3] / size[1]
             roi_cls_loc, roi_scores, rois, _ = self(img, scale=scale)
             # We are assuming that batch size is 1.
@@ -317,7 +317,7 @@ class FasterRCNN(nn.Module):
             raw_cls_bbox = at.tonumpy(cls_bbox)
             raw_prob = at.tonumpy(prob)
 
-            bbox, label, score = self._suppress(raw_cls_bbox, raw_prob)
+            bbox, label, score = self._suppress(raw_cls_bbox, raw_prob)            
             bboxes.append(bbox)
             labels.append(label)
             scores.append(score)
@@ -389,9 +389,14 @@ class FasterRCNN(nn.Module):
                 labels.append(label_dists[0].astype(np.int8)) # Use the mahalanobis predicted labels rather than softmax
                 scores.append(score)
                 # dists.append(label_dists[1].astype(np.float32))
+                del label_dists
+            else:
+                bboxes.append(np.empty(shape=(0,4), dtype=np.float32))
+                labels.append(np.empty(shape=(0), dtype=np.int32))
+                scores.append(np.empty(shape=(0), dtype=np.float32))
+                # dists.append(????)
 
             del bbox
-            del label_dists
             del cls_bbox
             del prob
             del raw_cls_bbox
@@ -411,31 +416,18 @@ class FasterRCNN(nn.Module):
             Return  label (int): The label of the class
                     distance (float): Mahalanobis distance from nearest class mean
         """
-        # dists = list()
-        # for mu_c in self.mahal_means:
-        #     if type(mu_c) == type(-1):
-        #         dists.append(np.ones(len(features)) * float('inf'))
-        #         continue
-        #     x = (features - mu_c)
-        #     dist = np.diagonal(np.dot(np.dot(x, self.inv_mahal_cov), x.T))
-        #     dists.append(dist)
-        #     del x
-
-        # dists = np.array(dists)
-        # return dists.argmin(axis=0), dists.min(axis=0)
         dists = list()
-        for feats in features:
-            for mu_c in self.mahal_means:
-                if type(mu_c) == type(-1):
-                    dists.append(-float('inf'))
-                    continue
-                x = (feats - mu_c)
-                dist = np.dot(np.dot(x, self.inv_mahal_cov), x.T)
-                dists.append(-dist)
-                del x
-        dists = np.array(dists).reshape((len(features),-1))
-        import pdb; pdb.set_trace()
-        return dists.argmax(axis=1), dists.max(axis=1)
+        for mu_c in self.mahal_means:
+            if type(mu_c) == type(-1):
+                dists.append(np.ones(len(features)) * float('inf'))
+                continue
+            x = (features - mu_c)
+            dist = np.diagonal(np.dot(np.dot(x, self.inv_mahal_cov), x.T))
+            dists.append(dist)
+            del x
+
+        dists = np.array(dists)
+        return dists.argmin(axis=0), dists.min(axis=0)
         
 
     def _calc_mahal_means(self, features, labels):
@@ -638,7 +630,7 @@ class FasterRCNN(nn.Module):
         for img, scale, gt_bbox, gt_label in zip(prepared_imgs, scales, gt_bboxes, gt_labels): 
             _, _, H, W = imgs.shape
             img_size = (H, W)
-            img = at.totensor(img[None]).float()
+            img = at.totensor(img[None], cuda=True).float()
             scale = at.scalar(scale)
 
             h = self.extractor(img)
@@ -774,7 +766,8 @@ class FasterRCNN(nn.Module):
         self.mahal_cov = self._calc_mahal_covariance_matrix(features, gt_labels)
         
         print("inverting feature covariance")
-        self.inv_mahal_cov = np.linalg.pinv(self.mahal_cov)
+        self.mahal_cov += np.eye(len(self.mahal_cov)) + 1e-18
+        self.inv_mahal_cov = np.linalg.inv(self.mahal_cov)
 
         return self.mahal_means, self.mahal_cov
 
