@@ -388,26 +388,18 @@ class FasterRCNN(nn.Module):
                 bboxes.append(bbox)
                 labels.append(label_dists[0].astype(np.int8)) # Use the mahalanobis predicted labels rather than softmax
                 scores.append(score)
-                # dists.append(label_dists[1].astype(np.float32))
-                del label_dists
+                dists.append(label_dists[1].astype(np.float32))
             else:
                 bboxes.append(np.empty(shape=(0,4), dtype=np.float32))
                 labels.append(np.empty(shape=(0), dtype=np.int32))
                 scores.append(np.empty(shape=(0), dtype=np.float32))
-                # dists.append(????)
-
-            del bbox
-            del cls_bbox
-            del prob
-            del raw_cls_bbox
-            del raw_prob
-            del head_feats
-            del roi
+                dists.append(np.empty(shape=(0), dtype=np.float32))
 
         self.use_preset('evaluate')
         self.train()
-        return bboxes, labels, scores#, dists
-    
+
+        return bboxes, labels, dists
+
 
     def predict_label_mahalanobis(self, features):
         """Given a set of features, predict the class label. Requires training the mahal_means and inv_mahal_cov.
@@ -766,8 +758,7 @@ class FasterRCNN(nn.Module):
         self.mahal_cov = self._calc_mahal_covariance_matrix(features, gt_labels)
         
         print("inverting feature covariance")
-        self.mahal_cov += np.eye(len(self.mahal_cov)) + 1e-18
-        self.inv_mahal_cov = np.linalg.inv(self.mahal_cov)
+        self.inv_mahal_cov = np.linalg.inv(self.mahal_cov + np.eye(len(self.mahal_cov)) + 1e-18)
 
         return self.mahal_means, self.mahal_cov
 
