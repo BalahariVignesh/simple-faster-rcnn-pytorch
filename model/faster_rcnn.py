@@ -381,12 +381,13 @@ class FasterRCNN(nn.Module):
             raw_prob = at.tonumpy(prob)
             head_feats = at.tonumpy(head_feats)
 
-            bbox, _, score, head_feats = self._suppress_with_feats(raw_cls_bbox, raw_prob, head_feats)
+            bbox, label, score, head_feats = self._suppress_with_feats(raw_cls_bbox, raw_prob, head_feats)
             if len(bbox) > 0:
                 # import pdb; pdb.set_trace()
-                label_dists = self.predict_label_mahalanobis(head_feats)
+                label_dists = self.predict_label_mahalanobis(head_feats, to_labels=label)
                 bboxes.append(bbox)
-                labels.append(label_dists[0].astype(np.int8)) # Use the mahalanobis predicted labels rather than softmax
+                labels.append(label) # Use the softmax label
+                # labels.append(label_dists[0].astype(np.int8)) # Use the mahalanobis predicted labels rather than softmax
                 scores.append(score)
                 dists.append(label_dists[1].astype(np.float32))
             else:
@@ -401,25 +402,35 @@ class FasterRCNN(nn.Module):
         return bboxes, labels, dists
 
 
-    def predict_label_mahalanobis(self, features):
+    def predict_label_mahalanobis(self, features, to_labels=None):
         """Given a set of features, predict the class label. Requires training the mahal_means and inv_mahal_cov.
             Features is of shape (batch, head_feature_length)
+            to_label: if int is specified, will only calculate distance to this label
 
             Return  label (int): The label of the class
                     distance (float): Mahalanobis distance from nearest class mean
         """
-        dists = list()
-        for mu_c in self.mahal_means:
-            if type(mu_c) == type(-1):
-                dists.append(np.ones(len(features)) * float('inf'))
-                continue
+        def _dist_to_mean(mu_c, features):
+            if type(mu_c) == type(-1) and to_labels is None:
+                dist = np.array(float('inf'))
+            elif type(mu_c) == type(-1):
+                dist = np.ones(len(features)) * float('inf')
             x = (features - mu_c)
-            dist = np.diagonal(np.dot(np.dot(x, self.inv_mahal_cov), x.T))
-            dists.append(dist)
-            del x
+            dist = np.dot(np.dot(x, self.inv_mahal_cov), x.T)
+            return dist
 
-        dists = np.array(dists)
-        return dists.argmin(axis=0), dists.min(axis=0)
+        dists = list()
+        if to_labels is not None:
+            for feature, label in zip(features, to_labels):
+                dists.append(_dist_to_mean(self.mahal_means[label], feature))
+            dists = np.array(dists)
+            return to_labels, dists
+        
+        else:
+            for mu_c in self.mahal_means:
+                dists.append(np.diagonal(_dist_to_mean(mu_c, features)))
+            dists = np.array(dists)
+            return dists.argmin(axis=0), dists.min(axis=0)
         
 
     def _calc_mahal_means(self, features, labels):

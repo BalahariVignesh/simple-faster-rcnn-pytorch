@@ -121,3 +121,5 @@ dmypy.json
 /VOCdevkit
 *.tar
 nohup.out
+pickles/
+weird_cars/
