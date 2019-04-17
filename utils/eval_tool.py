@@ -164,6 +164,8 @@ def calc_detection_voc_prec_rec(
             gt_difficult = np.zeros(gt_bbox.shape[0], dtype=bool)
 
         for l in np.unique(np.concatenate((pred_label, gt_label)).astype(int)):
+            if l < 0:  # Don't use don't care class
+                continue
             pred_mask_l = pred_label == l
             pred_bbox_l = pred_bbox[pred_mask_l]
             pred_score_l = pred_score[pred_mask_l]
@@ -222,6 +224,8 @@ def calc_detection_voc_prec_rec(
     rec = [None] * n_fg_class
 
     for l in n_pos.keys():
+        if l < 0:   # Ignore don't care class
+            continue
         score_l = np.array(score[l])
         match_l = np.array(match[l], dtype=np.int8)
 

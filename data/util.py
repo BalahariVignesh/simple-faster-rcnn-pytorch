@@ -1,19 +1,7 @@
 import numpy as np
 from PIL import Image
 import random
-
-
-VOC_BBOX_LABEL_NAMES = (
-    'car',
-    'van',
-    'truck',
-    'tram',
-    'person',
-    'person_sitting',
-    'cyclist',
-    'misc'
-    # 'dontcare
-)
+from utils.class_labels import CLASS_LABELS
 
 
 def read_image(path, dtype=np.float32, color=True):
@@ -54,7 +42,7 @@ def read_image(path, dtype=np.float32, color=True):
         return img.transpose((2, 0, 1))
 
 
-def read_bbox(f, ignore_dontcare=False):
+def read_bbox(f, ignore_dontcare=False, ignore_missing_labels=False):
     """Read the label data from file f and return a list of dicts of label parameters for 
         each object in the image/label file. Expect unconverted KITTI label file"""
     data = np.loadtxt(f, dtype=np.str, ndmin=2, delimiter=' ')
@@ -62,8 +50,10 @@ def read_bbox(f, ignore_dontcare=False):
     def extract_label_row(row):
         if ignore_dontcare and row[0].lower() == 'dontcare':
             return -1
+        elif row[0].lower() not in CLASS_LABELS and ignore_missing_labels:
+            return -1
         
-        return VOC_BBOX_LABEL_NAMES.index(row[0].lower())
+        return CLASS_LABELS.index(row[0].lower())
     
     def extract_bbox_row(row):
         return [

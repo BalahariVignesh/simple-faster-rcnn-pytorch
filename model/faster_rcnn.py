@@ -384,7 +384,7 @@ class FasterRCNN(nn.Module):
             bbox, label, score, head_feats = self._suppress_with_feats(raw_cls_bbox, raw_prob, head_feats)
             if len(bbox) > 0:
                 # import pdb; pdb.set_trace()
-                label_dists = self.predict_label_mahalanobis(head_feats, to_labels=label)
+                label_dists = self.predict_label_mahalanobis(head_feats)#, to_labels=label)
                 bboxes.append(bbox)
                 labels.append(label) # Use the softmax label
                 # labels.append(label_dists[0].astype(np.int8)) # Use the mahalanobis predicted labels rather than softmax
@@ -740,7 +740,7 @@ class FasterRCNN(nn.Module):
         return feats
 
 
-    def train_ood(self, dataloader, num_train=3711):
+    def train_ood(self, dataloader, num_train=opt.train_num):
         features = []
         gt_labels = []
 
