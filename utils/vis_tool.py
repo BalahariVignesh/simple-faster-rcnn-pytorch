@@ -7,21 +7,8 @@ import visdom
 
 matplotlib.use('Agg')
 from matplotlib import pyplot as plot
-
-# from data.voc_dataset import VOC_BBOX_LABEL_NAMES
-
-
-VOC_BBOX_LABEL_NAMES = (
-    'c',
-    'v',
-    't',
-    'tram',
-    'p',
-    'ps',
-    'cyc',
-    'misc'
-    # 'dc'
-)
+from utils.class_labels import VIS_LABELS
+# from data.voc_dataset import VIS_LABELS
 
 
 def vis_image(img, ax=None):
@@ -77,7 +64,7 @@ def vis_bbox(img, bbox, label=None, score=None, ax=None):
 
     """
 
-    label_names = list(VOC_BBOX_LABEL_NAMES) + ['dc']
+    label_names = list(VIS_LABELS) + ['dc']
     # add for index `-1`
     if label is not None and not len(bbox) == len(label):
         raise ValueError('The length of label must be same as that of bbox')

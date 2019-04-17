@@ -7,6 +7,7 @@ import numpy as np
 
 from .util import read_image
 from utils.config import opt
+from utils.class_labels import CLASS_LABELS
 
 
 class VOCBboxDataset:
@@ -83,7 +84,7 @@ class VOCBboxDataset:
         self.data_dir = data_dir
         self.use_difficult = use_difficult
         self.return_difficult = return_difficult
-        self.label_names = VOC_BBOX_LABEL_NAMES
+        self.label_names = CLASS_LABELS
 
     def __len__(self):
         return len(self.ids)
@@ -113,6 +114,17 @@ class VOCBboxDataset:
             if not self.use_difficult and int(obj.find('difficult').text) == 1:
                 continue
 
+            name = obj.find('name').text.lower().strip()
+            #print(name) 
+            if name not in CLASS_LABELS:
+                if opt.dont_care_class and name == 'dontcare':
+                    label.append(-1)  # All -1 gt_labels should not be backpropagated during training
+                elif opt.ignore_missing_labels:
+                    # print("ignoring", name)
+                    continue
+            else:
+                label.append(CLASS_LABELS.index(name))
+
             difficult.append(int(obj.find('difficult').text))
             bndbox_anno = obj.find('bndbox')
             
@@ -121,16 +133,16 @@ class VOCBboxDataset:
                 int(float(bndbox_anno.find(tag).text)) - 1
                 for tag in ('ymin', 'xmin', 'ymax', 'xmax')])
             name = obj.find('name').text.lower().strip()
-            #print(name) 
-            if name not in VOC_BBOX_LABEL_NAMES and opt.dont_care_class:
-                # print("treating class '{}' as 'dontcare'".format(name))
-                label.append(-1)  # All -1 gt_labels should not be backpropagated during training
-            else:
-                label.append(VOC_BBOX_LABEL_NAMES.index(name))
-        bbox = np.stack(bbox).astype(np.float32)
-        label = np.stack(label).astype(np.int32)
-        # When `use_difficult==False`, all elements in `difficult` are False.
-        difficult = np.array(difficult, dtype=np.bool).astype(np.uint8)  # PyTorch don't support np.bool
+
+        if len(label):
+            bbox = np.stack(bbox).astype(np.float32)
+            label = np.stack(label).astype(np.int32)
+            # When `use_difficult==False`, all elements in `difficult` are False.
+            difficult = np.array(difficult, dtype=np.bool).astype(np.uint8)  # PyTorch don't support np.bool
+        else:
+            bbox = np.empty((0,4))
+            label = np.empty((0,))            
+            difficult = np.empty((0,))
 
         # Load a image
         img_file = os.path.join(self.data_dir, 'JPEGImages', id_ + '.png')
@@ -141,16 +153,3 @@ class VOCBboxDataset:
         return img, bbox, label, difficult
 
     __getitem__ = get_example
-
-
-VOC_BBOX_LABEL_NAMES = (
-    'car',
-    'van',
-    'truck',
-    'tram',
-    'person',
-    'person_sitting',
-    'cyclist',
-    'misc'
-    # 'dontcare'
-)

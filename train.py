@@ -43,7 +43,7 @@ def eval(dataloader, faster_rcnn, test_num=10000):
     result = eval_detection_voc(
         pred_bboxes, pred_labels, pred_scores,
         gt_bboxes, gt_labels, gt_difficults,
-        use_07_metric=True)
+        use_07_metric=False)
     return result
 
 
@@ -64,7 +64,7 @@ def eval_mahal(dataloader, faster_rcnn, test_num=10000):
     result = eval_detection_voc(
         pred_bboxes, pred_labels, [-1 * s for s in pred_scores],
         gt_bboxes, gt_labels, gt_difficults,
-        use_07_metric=True)
+        use_07_metric=False)
     return result
 
 
@@ -96,7 +96,7 @@ def train(**kwargs):
     lr_ = opt.lr
     for epoch in range(opt.epoch):
         trainer.reset_meters()
-        for ii, (img, bbox_, label_, scale) in tqdm(enumerate(dataloader)):
+        for ii, (img, bbox_, label_, scale) in tqdm(enumerate(dataloader), total=opt.train_num):
             scale = at.scalar(scale)
             img, bbox, label = img.cuda().float(), bbox_.cuda(), label_.cuda()
             trainer.train_step(img, bbox, label, scale)
@@ -135,6 +135,7 @@ def train(**kwargs):
                                                   str(trainer.get_meter_data()))
         trainer.vis.log(log_info)
 
+        # trainer.save(best_map=best_map)
         if eval_result['map'] > best_map:
             best_map = eval_result['map']
             best_path = trainer.save(best_map=best_map)

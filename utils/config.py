@@ -1,6 +1,6 @@
 from pprint import pprint
 
-
+from .class_labels import CLASS_LABELS
 # Default Configs for training
 # NOTE that, config items could be overwriten by passing argument through command line.
 # e.g. --voc-data-dir='./data/'
@@ -13,12 +13,14 @@ class Config:
     num_workers = 0
     test_num_workers = 0
 
-    num_fg_classes = 8
+    num_fg_classes = len(CLASS_LABELS)
     
     # Don't care class present (as in kitti data)
     # Should not be counted in num_fg_classes and be listed as the final label in VOC_BBOX_LABEL_NAMES
     # Will treat all objects not present in VOC_BBOX_LABEL_NAMES as unlabeled and not backpropagate errors from these classes
     dont_care_class = True
+
+    ignore_missing_labels = True
 
     # sigma for l1_smooth_loss
     rpn_sigma = 3.
@@ -50,11 +52,20 @@ class Config:
     # debug
     debug_file = '/tmp/debugf'
 
-    test_num = 10000
+    # train_num = 3712  # all classes
+    # test_num = 3769  # all classes
+    # train_num = 3429  # cars only
+    # test_num = 3578  # cars only
+    # train_num = 3452  # cars and vans
+    # test_num = 3581  # cars and vans
+    train_num = 3012  # pedestrians and cyclists
+    test_num = 3185  # pedestrians and cyclists
+
+    
     # model
     load_path = None
 
-    caffe_pretrain = False # use caffe pretrained model instead of torchvision
+    caffe_pretrain = True # use caffe pretrained model instead of torchvision
     caffe_pretrain_path = 'checkpoints/vgg16_caffe.pth'
 
     def _parse(self, kwargs):
