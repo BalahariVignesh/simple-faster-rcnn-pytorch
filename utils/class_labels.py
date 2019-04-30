@@ -1,11 +1,11 @@
 # These labels should match the labels found in the dataset
 CLASS_LABELS = (
-    # 'car',
+    'car',
     # 'van',
     # 'truck',
     # 'tram',
-    'person',
-    'cyclist',
+    # 'person',
+    # 'cyclist',
     # 'misc'
     # 'dontcare'
 )
@@ -14,12 +14,12 @@ CLASS_LABELS = (
 # The index of each of these short labels should correspond to the same index
 #   class in CLASS_LABELS
 VIS_LABELS = (
-    # 'c',
+    'c',
     # 'v',
     # 't',
     # 'tram',
-    'p',
-    'cyc',
+    # 'p',
+    # 'cyc',
     # 'misc'
     # 'dc'
 )

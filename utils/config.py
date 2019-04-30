@@ -54,12 +54,12 @@ class Config:
 
     # train_num = 3712  # all classes
     # test_num = 3769  # all classes
-    # train_num = 3429  # cars only
-    # test_num = 3578  # cars only
+    train_num = 3429  # cars only
+    test_num = 3578  # cars only
     # train_num = 3452  # cars and vans
     # test_num = 3581  # cars and vans
-    train_num = 3012  # pedestrians and cyclists
-    test_num = 3185  # pedestrians and cyclists
+    # train_num = 3012  # pedestrians and cyclists
+    # test_num = 3185  # pedestrians and cyclists
 
     
     # model
