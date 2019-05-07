@@ -67,7 +67,7 @@ class VOCBboxDataset:
     """
 
     def __init__(self, data_dir, split='trainval',
-                 use_difficult=False, return_difficult=False,
+                 use_difficult=False, return_difficult=False, img_type='png'
                  ):
 
         # if split not in ['train', 'trainval', 'val']:
@@ -85,6 +85,7 @@ class VOCBboxDataset:
         self.use_difficult = use_difficult
         self.return_difficult = return_difficult
         self.label_names = CLASS_LABELS
+        self.img_type = img_type
 
     def __len__(self):
         return len(self.ids)
@@ -145,7 +146,7 @@ class VOCBboxDataset:
             difficult = np.empty((0,))
 
         # Load a image
-        img_file = os.path.join(self.data_dir, 'JPEGImages', id_ + '.png')
+        img_file = os.path.join(self.data_dir, 'JPEGImages', id_ + '.' + self.img_type)
         img = read_image(img_file, color=True)
 
         # if self.return_difficult:

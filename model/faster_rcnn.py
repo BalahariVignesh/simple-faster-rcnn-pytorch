@@ -352,7 +352,7 @@ class FasterRCNN(nn.Module):
         # Apply epsilon * signof input grad
         perturbation = epsilon * imgs.grad.sign()
 
-        return imgs + perturbation
+        return imgs - perturbation
 
 
     # @nograd
@@ -374,61 +374,60 @@ class FasterRCNN(nn.Module):
         labels = list()
         scores = list()
         dists = list()
+        
+        for img, size in zip(prepared_imgs, sizes):
+            scale = img.shape[2] / size[1]
 
-        img = prepared_imgs[0]
-        size = sizes[0]
-        scale = img.shape[2] / size[1]
+            img = at.totensor(img[None], cuda=True).float()
 
-        img = at.totensor(img[None], cuda=True).float()
+            if perturbation != 0:
+                img = self.input_perturbation(img, scale, epsilon=perturbation)
 
-        if perturbation > 0:
-            img = self.input_perturbation(img, scale, epsilon=perturbation)
+            roi_cls_loc, roi_scores, rois, _, head_feats = self.forward_with_head_features(img, scale=scale)
 
-        roi_cls_loc, roi_scores, rois, _, head_feats = self.forward_with_head_features(img, scale=scale)
+            # We are assuming that batch size is 1.
+            roi_score = roi_scores.data
+            roi_cls_loc = roi_cls_loc.data
+            roi = at.totensor(rois) / scale
 
-        # We are assuming that batch size is 1.
-        roi_score = roi_scores.data
-        roi_cls_loc = roi_cls_loc.data
-        roi = at.totensor(rois) / scale
+            # Convert predictions to bounding boxes in image coordinates.
+            # Bounding boxes are scaled to the scale of the input images.
+            mean = t.Tensor(self.loc_normalize_mean).cuda(). \
+                repeat(self.n_class)[None]
+            std = t.Tensor(self.loc_normalize_std).cuda(). \
+                repeat(self.n_class)[None]
 
-        # Convert predictions to bounding boxes in image coordinates.
-        # Bounding boxes are scaled to the scale of the input images.
-        mean = t.Tensor(self.loc_normalize_mean).cuda(). \
-            repeat(self.n_class)[None]
-        std = t.Tensor(self.loc_normalize_std).cuda(). \
-            repeat(self.n_class)[None]
+            roi_cls_loc = (roi_cls_loc * std + mean)
+            roi_cls_loc = roi_cls_loc.view(-1, self.n_class, 4)
+            roi = roi.view(-1, 1, 4).expand_as(roi_cls_loc)
+            cls_bbox = loc2bbox(at.tonumpy(roi).reshape((-1, 4)),
+                                at.tonumpy(roi_cls_loc).reshape((-1, 4)))
+            cls_bbox = at.totensor(cls_bbox)
+            cls_bbox = cls_bbox.view(-1, self.n_class * 4)
+            # clip bounding box
+            cls_bbox[:, 0::2] = (cls_bbox[:, 0::2]).clamp(min=0, max=size[0])
+            cls_bbox[:, 1::2] = (cls_bbox[:, 1::2]).clamp(min=0, max=size[1])
 
-        roi_cls_loc = (roi_cls_loc * std + mean)
-        roi_cls_loc = roi_cls_loc.view(-1, self.n_class, 4)
-        roi = roi.view(-1, 1, 4).expand_as(roi_cls_loc)
-        cls_bbox = loc2bbox(at.tonumpy(roi).reshape((-1, 4)),
-                            at.tonumpy(roi_cls_loc).reshape((-1, 4)))
-        cls_bbox = at.totensor(cls_bbox)
-        cls_bbox = cls_bbox.view(-1, self.n_class * 4)
-        # clip bounding box
-        cls_bbox[:, 0::2] = (cls_bbox[:, 0::2]).clamp(min=0, max=size[0])
-        cls_bbox[:, 1::2] = (cls_bbox[:, 1::2]).clamp(min=0, max=size[1])
+            prob = at.tonumpy(F.softmax(at.totensor(roi_score), dim=1))
 
-        prob = at.tonumpy(F.softmax(at.totensor(roi_score), dim=1))
+            raw_cls_bbox = at.tonumpy(cls_bbox)
+            raw_prob = at.tonumpy(prob)
+            head_feats = at.tonumpy(head_feats)
 
-        raw_cls_bbox = at.tonumpy(cls_bbox)
-        raw_prob = at.tonumpy(prob)
-        head_feats = at.tonumpy(head_feats)
+            bbox, label, score, head_feats = self._suppress_with_feats(raw_cls_bbox, raw_prob, head_feats)
 
-        bbox, label, score, head_feats = self._suppress_with_feats(raw_cls_bbox, raw_prob, head_feats)
-
-        if len(bbox) > 0:
-            # import pdb; pdb.set_trace()
-            label_dists = self.predict_label_mahalanobis(at.totensor(head_feats))
-            bboxes.append(bbox)
-            labels.append(at.tonumpy(label_dists[0]).astype(np.int8)) # Use the mahalanobis predicted labels rather than softmax
-            scores.append(score)
-            dists.append(at.tonumpy(label_dists[1]).astype(np.float32))
-        else:
-            bboxes.append(np.empty(shape=(0,4), dtype=np.float32))
-            labels.append(np.empty(shape=(0), dtype=np.int32))
-            scores.append(np.empty(shape=(0), dtype=np.float32))
-            dists.append(np.empty(shape=(0), dtype=np.float32))
+            if len(bbox) > 0:
+                # import pdb; pdb.set_trace()
+                label_dists = self.predict_label_mahalanobis(at.totensor(head_feats))
+                bboxes.append(bbox)
+                labels.append(at.tonumpy(label_dists[0]).astype(np.int8)) # Use the mahalanobis predicted labels rather than softmax
+                scores.append(score)
+                dists.append(at.tonumpy(label_dists[1]).astype(np.float32))
+            else:
+                bboxes.append(np.empty(shape=(0,4), dtype=np.float32))
+                labels.append(np.empty(shape=(0), dtype=np.int32))
+                scores.append(np.empty(shape=(0), dtype=np.float32))
+                dists.append(np.empty(shape=(0), dtype=np.float32))
 
         self.use_preset('evaluate')
         # self.train()
@@ -604,6 +603,10 @@ class FasterRCNN(nn.Module):
         self._calc_mahal_covariance_matrix(features, gt_labels)
         print("inverting feature covariance")
         self._invert_mahal_covariance_matrix()
+        
+        self.mahal_means = at.totensor(np.array(self.mahal_means))
+        self.mahal_cov = at.totensor(self.mahal_cov).float()
+        self.inv_mahal_cov = at.totensor(self.inv_mahal_cov).float()
 
         self.save_mahalanobis_features(save_dir='./')
 
@@ -625,11 +628,11 @@ class FasterRCNN(nn.Module):
         with open(os.path.join(save_dir,'kitti_features.pickle'), 'rb') as f:
             self.features = pickle.load(f)
         with open(os.path.join(save_dir, 'mahal_means.pickle'), 'rb') as f:
-            self.mahal_means = at.totensor(np.array(pickle.load(f)))
+            self.mahal_means = pickle.load(f)
         with open(os.path.join(save_dir, 'mahal_cov.pickle'), 'rb') as f:
-            self.mahal_cov = at.totensor(pickle.load(f))
+            self.mahal_cov = pickle.load(f)
         with open(os.path.join(save_dir, 'inv_mahal_cov.pickle'), 'rb') as f:
-            self.inv_mahal_cov = at.totensor(pickle.load(f)).float()
+            self.inv_mahal_cov = pickle.load(f)
 
 
     def get_optimizer(self):
