@@ -123,3 +123,6 @@ dmypy.json
 nohup.out
 pickles/
 weird_cars/
+*.h5
+*.pt
+*.pickle
