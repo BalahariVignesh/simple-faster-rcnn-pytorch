@@ -46,23 +46,27 @@ def fpr_at_95_tpr(preds, labels):
 
 
 def detection_error(preds, labels):
-    """Return the misclassification probability when TPR is 95%.
+    """Return the minimum misclassification probability when TPR >= 95%.
         
     preds: array, shape = [n_samples]
            Target scores, can either be probability estimates of the positive class, confidence values, or non-thresholded measure of decisions.
            
     labels: array, shape = [n_samples]
-            True binary labels in range {0, 1} or {-1, 1}.
-    """
-    fpr, tpr, _ = roc_curve(labels, preds)
-
-    # Get the index of the first TPR that is >= 95%
-    idx = next(i for i, x in enumerate(tpr) if x>=0.95)
-    
-    t = tpr[idx]
+            True binary    t = tpr[idx]
     f = fpr[idx]
     
-    return 0.5 * (1 - t) + 0.5 * f
+    return 0.5 * (1 - t) + 0.5 * f labels in range {0, 1} or {-1, 1}.
+    """
+    fpr, tpr, _ = roc_curve(labels, preds)
+        
+    # Get indexes of all TPR >= 95%
+    idxs = [i for i, x in enumerate(tpr) if x>=0.95]
+    
+    # Calc error for a given threshold (i.e. idx)
+    _detection_error = lambda idx: 0.5 * (1 - tpr[idx]) + 0.5 * fpr[idx]
+    
+    # Return the minimum detection error such that TPR >= 0.95
+    return min(map(_detection_error, idxs))
 
 
 def plot_roc(preds, labels, title="Receiver operating characteristic"):

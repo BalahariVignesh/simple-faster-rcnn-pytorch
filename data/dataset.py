@@ -98,9 +98,9 @@ class Transform(object):
 
 
 class Dataset:
-    def __init__(self, opt, split='train'):
+    def __init__(self, opt, split='train', img_type='png'):
         self.opt = opt
-        self.db = VOCBboxDataset(opt.voc_data_dir, split=split)
+        self.db = VOCBboxDataset(opt.voc_data_dir, split=split, img_type=img_type)
         self.tsf = Transform(opt.min_size, opt.max_size)
 
     def __getitem__(self, idx):
@@ -116,13 +116,27 @@ class Dataset:
 
 
 class TestDataset:
-    def __init__(self, opt, split='test', use_difficult=True):
+    def __init__(self, opt, split='test', use_difficult=True, img_type='png'):
         self.opt = opt
-        self.db = VOCBboxDataset(opt.voc_data_dir, split=split, use_difficult=use_difficult)
+        self.db = VOCBboxDataset(opt.voc_data_dir, split=split, use_difficult=use_difficult, img_type=img_type)
 
     def __getitem__(self, idx):
         ori_img, bbox, label, difficult = self.db.get_example(idx)
         img = preprocess(ori_img)
+        return img, ori_img.shape[1:], bbox, label, difficult
+
+    def __len__(self):
+        return len(self.db)
+    
+    
+class KittiDataset:
+    def __init__(self, opt, split='test', use_difficult=True, img_type='png'):
+        self.opt = opt
+        self.db = VOCBboxDataset(opt.voc_data_dir, split=split, use_difficult=use_difficult, img_type=img_type)
+
+    def __getitem__(self, idx):
+        ori_img, bbox, label, difficult = self.db.get_example(idx)
+        img = ori_img
         return img, ori_img.shape[1:], bbox, label, difficult
 
     def __len__(self):
