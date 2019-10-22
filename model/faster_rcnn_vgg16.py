@@ -114,7 +114,7 @@ class VGG16RoIHead(nn.Module):
         self.spatial_scale = spatial_scale
         self.roi = RoIPooling2D(self.roi_size, self.roi_size, self.spatial_scale)
 
-    def forward(self, x, rois, roi_indices, return_features=False):
+    def forward(self, x, rois, roi_indices, return_penultimate=False, return_features=False):
         """Forward the chain.
 
         We assume that there are :math:`N` batches.
@@ -140,13 +140,28 @@ class VGG16RoIHead(nn.Module):
         indices_and_rois =  xy_indices_and_rois.contiguous()
 
         pool = self.roi(x, indices_and_rois)
+        f1 = pool.mean(dim=(2,3)).view(pool.size(0), -1)
+        features = [f1]
+
         pool = pool.view(pool.size(0), -1)
-        fc7 = self.classifier(pool)
+        
+        for i, l in enumerate(self.classifier):
+            if i == 0:
+                features.append(l(pool))
+            else:
+                features.append(l(features[-1]))
+
+        fc7 = features[-1]
         roi_cls_locs = self.cls_loc(fc7)
         roi_scores = self.score(fc7)
         
-        if return_features:
-            return roi_cls_locs, roi_scores, fc7            
+        if return_penultimate:
+            return roi_cls_locs, roi_scores, fc7
+        elif return_features:
+            # Remove the relu layers to save disk space
+            del features[-1]
+            del features[2]
+            return roi_cls_locs, roi_scores, features          
         else:
             return roi_cls_locs, roi_scores
 

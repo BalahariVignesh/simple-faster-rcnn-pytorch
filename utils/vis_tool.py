@@ -28,7 +28,7 @@ def vis_image(img, ax=None):
     """
 
     if ax is None:
-        fig = plot.figure()
+        fig = plot.figure(figsize=(20,20))
         ax = fig.add_subplot(1, 1, 1)
     # CHW -> HWC
     img = img.transpose((1, 2, 0))
@@ -91,7 +91,7 @@ def vis_bbox(img, bbox, label=None, score=None, ax=None):
             lb = label[i]
             if not (-1 <= lb < len(label_names)):  # modfy here to add backgroud
                 raise ValueError('No corresponding name is given')
-            caption.append(label_names[lb])
+            caption.append(str(lb))
         if score is not None:
             sc = score[i]
             caption.append('{:.2f}'.format(sc))

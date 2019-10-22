@@ -137,7 +137,17 @@ class FasterRCNN(nn.Module):
         return roi_cls_locs, roi_scores, rois, roi_indices
 
 
-    def forward_with_head_features(self, x, scale=1.):
+    def forward_with_penultimate_features(self, x, scale=1.):
+        img_size = x.shape[2:]
+
+        h = self.extractor(x)
+        rpn_locs, rpn_scores, rois, roi_indices, anchor = self.rpn(h, img_size, scale)
+        roi_cls_locs, roi_scores, head_features = self.head(h, rois, roi_indices, return_penultimate=True)
+        
+        return roi_cls_locs, roi_scores, rois, roi_indices, head_features
+
+
+    def forward_with_all_features(self, x, scale=1.):
         img_size = x.shape[2:]
 
         h = self.extractor(x)
@@ -197,7 +207,9 @@ class FasterRCNN(nn.Module):
         score = np.concatenate(score, axis=0).astype(np.float32)
         return bbox, label, score
 
-    def _suppress_with_feats(self, raw_cls_bbox, raw_prob, raw_head_feats):
+
+    def _suppress_with_penultimate(self, raw_cls_bbox, raw_prob, raw_head_feats):
+        import pdb; pdb.set_trace()
         bbox = list()
         label = list()
         score = list()
@@ -225,6 +237,37 @@ class FasterRCNN(nn.Module):
         features = np.concatenate(features, axis=0).astype(np.float32)
         return bbox, label, score, features
 
+
+    def _suppress_with_features(self, raw_cls_bbox, raw_prob, raw_head_feats):
+        # import pdb; pdb.set_trace()
+        bbox = list()
+        label = list()
+        score = list()
+        features = list()
+        # skip cls_id = 0 because it is the background class
+        for l in range(1, self.n_class):
+            cls_bbox_l = raw_cls_bbox.reshape((-1, self.n_class, 4))[:, l, :]
+            feats_l = raw_head_feats
+            prob_l = raw_prob[:, l]
+            mask = prob_l > self.score_thresh
+            cls_bbox_l = cls_bbox_l[mask]
+            feats_l = [f[mask] for f in feats_l]
+            prob_l = prob_l[mask]
+            keep = non_maximum_suppression(
+                cp.array(cls_bbox_l), self.nms_thresh, prob_l)
+            keep = cp.asnumpy(keep)
+            bbox.append(cls_bbox_l[keep])
+            # The labels are in [0, self.n_class - 2].
+            label.append((l - 1) * np.ones((len(keep),)))
+            score.append(prob_l[keep])
+            features.append([f[keep] for f in feats_l])
+        bbox = np.concatenate(bbox, axis=0).astype(np.float32)
+        label = np.concatenate(label, axis=0).astype(np.int32)
+        score = np.concatenate(score, axis=0).astype(np.float32)
+        features = [np.concatenate(list(f[i] for f in features), axis=0) for i in range(len(features[0]))]
+        return bbox, label, score, features
+        
+        
     def _reform_raw_cls_bbox(self, raw_cls_bbox, raw_prob):
         """Reforms raw features to bboxes without non-maximum suppression."""
         bbox = list()
@@ -341,7 +384,7 @@ class FasterRCNN(nn.Module):
         # Allow gradient on input imgs
         imgs.requires_grad_()
 
-        roi_cls_loc, roi_scores, rois, _, head_feats = self.forward_with_head_features(imgs, scale=scale)
+        roi_cls_loc, roi_scores, rois, _, head_feats = self.forward_with_penultimate_features(imgs, scale=scale)
 
         # Use the head features to predict classes and distances
         labels, distances = self.predict_label_mahalanobis(head_feats)
@@ -383,7 +426,7 @@ class FasterRCNN(nn.Module):
             if perturbation != 0:
                 img = self.input_perturbation(img, scale, epsilon=perturbation)
 
-            roi_cls_loc, roi_scores, rois, _, head_feats = self.forward_with_head_features(img, scale=scale)
+            roi_cls_loc, roi_scores, rois, _, head_feats = self.forward_with_penultimate_features(img, scale=scale)
 
             # We are assuming that batch size is 1.
             roi_score = roi_scores.data
@@ -414,7 +457,7 @@ class FasterRCNN(nn.Module):
             raw_prob = at.tonumpy(prob)
             head_feats = at.tonumpy(head_feats)
 
-            bbox, label, score, head_feats = self._suppress_with_feats(raw_cls_bbox, raw_prob, head_feats)
+            bbox, label, score, head_feats = self._suppress_with_penultimate(raw_cls_bbox, raw_prob, head_feats)
 
             if len(bbox) > 0:
                 # import pdb; pdb.set_trace()
@@ -433,6 +476,77 @@ class FasterRCNN(nn.Module):
         # self.train()
 
         return bboxes, labels, dists
+
+
+    # @nograd
+    def predict_with_features(self, imgs, sizes=None, visualize=False, perturbation=0):
+        """Same as predict function but predicts class of objects using Mahalanobis distance."""
+        # self.eval()
+        if visualize:
+            self.use_preset('visualize')
+            prepared_imgs = list()
+            sizes = list()
+            for img in imgs:
+                size = img.shape[1:]
+                img = preprocess(at.tonumpy(img))
+                prepared_imgs.append(img)
+                sizes.append(size)
+        else:
+             prepared_imgs = imgs 
+        bboxes = list()
+        labels = list()
+        scores = list()
+        features = list()
+        
+        for img, size in zip(prepared_imgs, sizes):
+            scale = img.shape[2] / size[1]
+
+            img = at.totensor(img[None], cuda=True).float()
+
+            if perturbation != 0:
+                img = self.input_perturbation(img, scale, epsilon=perturbation)
+
+            roi_cls_loc, roi_scores, rois, _, head_feats = self.forward_with_all_features(img, scale=scale)
+
+            # We are assuming that batch size is 1.
+            roi_score = roi_scores.data
+            roi_cls_loc = roi_cls_loc.data
+            roi = at.totensor(rois) / scale
+
+            # Convert predictions to bounding boxes in image coordinates.
+            # Bounding boxes are scaled to the scale of the input images.
+            mean = t.Tensor(self.loc_normalize_mean).cuda(). \
+                repeat(self.n_class)[None]
+            std = t.Tensor(self.loc_normalize_std).cuda(). \
+                repeat(self.n_class)[None]
+
+            roi_cls_loc = (roi_cls_loc * std + mean)
+            roi_cls_loc = roi_cls_loc.view(-1, self.n_class, 4)
+            roi = roi.view(-1, 1, 4).expand_as(roi_cls_loc)
+            cls_bbox = loc2bbox(at.tonumpy(roi).reshape((-1, 4)),
+                                at.tonumpy(roi_cls_loc).reshape((-1, 4)))
+            cls_bbox = at.totensor(cls_bbox)
+            cls_bbox = cls_bbox.view(-1, self.n_class * 4)
+            # clip bounding box
+            cls_bbox[:, 0::2] = (cls_bbox[:, 0::2]).clamp(min=0, max=size[0])
+            cls_bbox[:, 1::2] = (cls_bbox[:, 1::2]).clamp(min=0, max=size[1])
+
+            prob = at.tonumpy(F.softmax(at.totensor(roi_score), dim=1))
+
+            raw_cls_bbox = at.tonumpy(cls_bbox)
+            raw_prob = at.tonumpy(prob)
+            head_feats = [at.tonumpy(f) for f in head_feats]
+
+            bbox, label, score, head_feats = self._suppress_with_features(raw_cls_bbox, raw_prob, head_feats)
+
+            bboxes.append(bbox)
+            labels.append(label)
+            scores.append(score)
+            features.append(head_feats)
+
+        self.use_preset('evaluate')
+
+        return bboxes, labels, scores, features
 
 
     def predict_label_mahalanobis(self, features):
@@ -512,7 +626,7 @@ class FasterRCNN(nn.Module):
             raw_prob = at.tonumpy(prob)
             raw_feats = at.tonumpy(head_feats)
 
-            bbox, label, score, feats = self._suppress_with_feats(raw_cls_bbox, raw_prob, raw_feats)
+            bbox, label, score, feats = self._suppress_with_penultimate(raw_cls_bbox, raw_prob, raw_feats)
 
             # For each gt bbox with associated label:
             #   If there is a predicted bbox and label with iou > 0.5 and label matching:
@@ -660,5 +774,130 @@ class FasterRCNN(nn.Module):
         return self.optimizer
 
 
+    @nograd
+    def get_rpn_output(self, imgs, scales):
+        """Get the objectness scores for all anchor boxes."""
+        self.eval()
+        prepared_imgs = imgs
+        # bboxes = list()
+        # labels = list()
+        # scores = list()
+        
+        for img, scale in zip(prepared_imgs, scales): 
+            _, _, H, W = imgs.shape
+            # img_size = (H, W)
+            img = at.totensor(img[None], cuda=True).float()
+            scale = at.scalar(scale)
+
+            h = self.extractor(img)
+            return self.rpn(h, img.shape[2:], scale)
 
 
+    @nograd
+    def predict_with_bg(self, imgs, sizes=None, visualize=False):
+        """Detect objects from images.
+
+        This method predicts objects for each image.
+
+        Args:
+            imgs (iterable of numpy.ndarray): Arrays holding images.
+                All images are in CHW and RGB format
+                and the range of their value is :math:`[0, 255]`.
+
+        Returns:
+           tuple of lists:
+           This method returns a tuple of three lists,
+           :obj:`(bboxes, labels, scores)`.
+
+           * **bboxes**: A list of float arrays of shape :math:`(R, 4)`, \
+               where :math:`R` is the number of bounding boxes in a image. \
+               Each bouding box is organized by \
+               :math:`(y_{min}, x_{min}, y_{max}, x_{max})` \
+               in the second axis.
+           * **labels** : A list of integer arrays of shape :math:`(R,)`. \
+               Each value indicates the class of the bounding box. \
+               Values are in range :math:`[0, L - 1]`, where :math:`L` is the \
+               number of the foreground classes.
+           * **scores** : A list of float arrays of shape :math:`(R,)`. \
+               Each value indicates how confident the prediction is.
+
+        """
+        self.eval()
+        if visualize:
+            self.use_preset('visualize')
+            prepared_imgs = list()
+            sizes = list()
+            for img in imgs:
+                size = img.shape[1:]
+                img = preprocess(at.tonumpy(img))
+                prepared_imgs.append(img)
+                sizes.append(size)
+        else:
+             prepared_imgs = imgs 
+        bboxes = list()
+        labels = list()
+        scores = list()
+        for img, size in zip(prepared_imgs, sizes):
+            img = at.totensor(img[None], cuda=True).float()
+            scale = img.shape[3] / size[1]
+            roi_cls_loc, roi_scores, rois, _ = self(img, scale=scale)
+            # We are assuming that batch size is 1.
+            roi_score = roi_scores.data
+            roi_cls_loc = roi_cls_loc.data
+            roi = at.totensor(rois) / scale
+
+            # Convert predictions to bounding boxes in image coordinates.
+            # Bounding boxes are scaled to the scale of the input images.
+            mean = t.Tensor(self.loc_normalize_mean).cuda(). \
+                repeat(self.n_class)[None]
+            std = t.Tensor(self.loc_normalize_std).cuda(). \
+                repeat(self.n_class)[None]
+
+            roi_cls_loc = (roi_cls_loc * std + mean)
+            roi_cls_loc = roi_cls_loc.view(-1, self.n_class, 4)
+            roi = roi.view(-1, 1, 4).expand_as(roi_cls_loc)
+            cls_bbox = loc2bbox(at.tonumpy(roi).reshape((-1, 4)),
+                                at.tonumpy(roi_cls_loc).reshape((-1, 4)))
+            cls_bbox = at.totensor(cls_bbox)
+            cls_bbox = cls_bbox.view(-1, self.n_class * 4)
+            # clip bounding box
+            cls_bbox[:, 0::2] = (cls_bbox[:, 0::2]).clamp(min=0, max=size[0])
+            cls_bbox[:, 1::2] = (cls_bbox[:, 1::2]).clamp(min=0, max=size[1])
+
+            prob = at.tonumpy(F.softmax(at.totensor(roi_score), dim=1))
+
+            raw_cls_bbox = at.tonumpy(cls_bbox)
+            raw_prob = at.tonumpy(prob)
+
+            bbox, label, score = self._dummy_suppress(raw_cls_bbox, raw_prob)            
+            bboxes.append(bbox)
+            labels.append(label)
+            scores.append(score)
+
+        self.use_preset('evaluate')
+        self.train()
+        return bboxes, labels, scores
+
+
+    def _dummy_suppress(self, raw_cls_bbox, raw_prob):
+        """Same inputs and outputs as NMS function but includes the background class."""
+        bbox = list()
+        label = list()
+        score = list()
+        for l in range(0, self.n_class):
+            cls_bbox_l = raw_cls_bbox.reshape((-1, self.n_class, 4))[:, l, :]
+            prob_l = raw_prob[:, l]
+            mask = prob_l > 0.1  # self.score_thresh
+            cls_bbox_l = cls_bbox_l[mask]
+            prob_l = prob_l[mask]
+            keep = non_maximum_suppression(
+                cp.array(cls_bbox_l), self.nms_thresh, prob_l)
+            keep = cp.asnumpy(keep)
+            bbox.append(cls_bbox_l[keep])
+            # The labels are in [0, self.n_class - 2].
+            label.append((l) * np.ones((len(keep),)))
+            score.append(prob_l[keep])
+        bbox = np.concatenate(bbox, axis=0).astype(np.float32)
+        label = np.concatenate(label, axis=0).astype(np.int32)
+        score = np.concatenate(score, axis=0).astype(np.float32)
+        return bbox, label, score

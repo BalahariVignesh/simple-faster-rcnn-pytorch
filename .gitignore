@@ -126,3 +126,9 @@ weird_cars/
 *.h5
 *.pt
 *.pickle
+
+*.hdf5
+
+*.db
+
+*.gz
