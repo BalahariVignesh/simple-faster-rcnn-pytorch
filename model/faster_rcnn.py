@@ -522,7 +522,7 @@ class FasterRCNN(nn.Module):
 
 
     # @nograd
-    def predict_odin(self, imgs, sizes=None, visualize=False, perturbation=0, temperature=1):
+    def predict_with_features(self, imgs, sizes=None, visualize=False, perturbation=0, temperature=1):
         """Same as predict function but predicts class of objects using Mahalanobis distance."""
         # self.eval()
         if visualize:
@@ -546,15 +546,19 @@ class FasterRCNN(nn.Module):
 
             img = at.totensor(img[None], cuda=True).float()
 
-            if perturbation != 0:
+            h = self.extractor(img)
+            rpn_locs, rpn_scores, rois, roi_indices, anchor = self.rpn(h, img.shape[2:], scale)
+    
+            # If ODIN parameters passed, perturb image
+            if perturbation != 0 or temperature != 1:
                 img = self.input_perturbation_odin(img, scale, epsilon=perturbation, temper=temperature)
-
-            roi_cls_loc, roi_scores, rois, _ = self.forward(img, scale=scale)
-            # roi_cls_loc, roi_scores, rois, _, head_feats = self.forward_with_all_features(img, scale=scale)
-
+                h = self.extractor(img)
+                
+            roi_cls_locs, roi_scores, head_feats = self.head(h, rois, roi_indices, return_features=True)
+            
             # We are assuming that batch size is 1.
             roi_score = roi_scores.data
-            roi_cls_loc = roi_cls_loc.data
+            roi_cls_loc = roi_cls_locs.data
             roi = at.totensor(rois) / scale
 
             # Convert predictions to bounding boxes in image coordinates.
@@ -576,78 +580,6 @@ class FasterRCNN(nn.Module):
             cls_bbox[:, 1::2] = (cls_bbox[:, 1::2]).clamp(min=0, max=size[1])
 
             prob = at.tonumpy(F.softmax(at.totensor(roi_score) / float(temperature), dim=1))
-
-            raw_cls_bbox = at.tonumpy(cls_bbox)
-            raw_prob = at.tonumpy(prob)
-            head_feats = [at.tonumpy(f) for f in head_feats]
-
-            bbox, label, score, head_feats = self._suppress_with_features(raw_cls_bbox, raw_prob, head_feats)
-
-            bboxes.append(bbox)
-            labels.append(label)
-            scores.append(score)
-            features.append(head_feats)
-
-        # self.use_preset('evaluate')
-
-        return bboxes, labels, scores, features
-
-
-    # @nograd
-    def predict_with_features(self, imgs, sizes=None, visualize=False):
-        """Same as predict function but predicts class of objects using Mahalanobis distance."""
-        # self.eval()
-        if visualize:
-            self.use_preset('visualize')
-            prepared_imgs = list()
-            sizes = list()
-            for img in imgs:
-                size = img.shape[1:]
-                img = preprocess(at.tonumpy(img))
-                prepared_imgs.append(img)
-                sizes.append(size)
-        else:
-             prepared_imgs = imgs 
-        bboxes = list()
-        labels = list()
-        scores = list()
-        features = list()
-        
-        for img, size in zip(prepared_imgs, sizes):
-            scale = img.shape[2] / size[1]
-
-            img = at.totensor(img[None], cuda=True).float()
-
-            # if perturbation != 0:
-            #     img = self.input_perturbation_odin(img, scale, epsilon=perturbation, temper=temperature)
-
-            roi_cls_loc, roi_scores, rois, _, head_feats = self.forward_with_all_features(img, scale=scale)
-
-            # We are assuming that batch size is 1.
-            roi_score = roi_scores.data
-            roi_cls_loc = roi_cls_loc.data
-            roi = at.totensor(rois) / scale
-
-            # Convert predictions to bounding boxes in image coordinates.
-            # Bounding boxes are scaled to the scale of the input images.
-            mean = t.Tensor(self.loc_normalize_mean).cuda(). \
-                repeat(self.n_class)[None]
-            std = t.Tensor(self.loc_normalize_std).cuda(). \
-                repeat(self.n_class)[None]
-
-            roi_cls_loc = (roi_cls_loc * std + mean)
-            roi_cls_loc = roi_cls_loc.view(-1, self.n_class, 4)
-            roi = roi.view(-1, 1, 4).expand_as(roi_cls_loc)
-            cls_bbox = loc2bbox(at.tonumpy(roi).reshape((-1, 4)),
-                                at.tonumpy(roi_cls_loc).reshape((-1, 4)))
-            cls_bbox = at.totensor(cls_bbox)
-            cls_bbox = cls_bbox.view(-1, self.n_class * 4)
-            # clip bounding box
-            cls_bbox[:, 0::2] = (cls_bbox[:, 0::2]).clamp(min=0, max=size[0])
-            cls_bbox[:, 1::2] = (cls_bbox[:, 1::2]).clamp(min=0, max=size[1])
-
-            # prob = at.tonumpy(F.softmax(at.totensor(roi_score) / float(temperature), dim=1))
-            prob = at.tonumpy(F.softmax(at.totensor(roi_score), dim=1))
 
             raw_cls_bbox = at.tonumpy(cls_bbox)
             raw_prob = at.tonumpy(prob)
