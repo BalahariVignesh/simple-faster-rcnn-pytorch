@@ -8,13 +8,17 @@ from model.utils.bbox_tools import loc2bbox, bbox2loc, bbox_iou
 from model.utils.nms import non_maximum_suppression
 from model.utils.creator_tool import AnchorTargetCreator, ProposalTargetCreator
 
+import torch
 from torch import nn
 from data.dataset import preprocess
 from torch.nn import functional as F
+from torch.autograd import Variable
 from utils.config import opt
 from tqdm import tqdm
 import pickle
 import os
+from torchvision import transforms as tvtsf
+
 
 
 def nograd(f):
@@ -372,7 +376,7 @@ class FasterRCNN(nn.Module):
         return bboxes, labels, scores
 
 
-    def input_perturbation(self, imgs, scale, epsilon=0.0005):
+    def input_perturbation_mahalanobis(self, imgs, scale, epsilon=0.0005):
         # zero grad
         self.optimizer.zero_grad()
         
@@ -394,6 +398,44 @@ class FasterRCNN(nn.Module):
 
         # Apply epsilon * signof input grad
         perturbation = epsilon * imgs.grad.sign()
+
+        return imgs - perturbation
+
+
+    def input_perturbation_odin(self, imgs, scale, epsilon, temper):
+        # zero grad
+        self.optimizer.zero_grad()
+        
+        _, _, H, W = imgs.shape
+        img_size = (H, W)
+        
+        imgs = at.totensor(imgs)
+        scale = at.scalar(scale)
+        # Allow gradient on input imgs
+        imgs.requires_grad_()
+
+        # Get the class predictions
+        roi_cls_loc, roi_scores, rois, _ = self.forward(imgs, scale=scale)
+
+        # Calculating the perturbation we need to add, that is,
+        # the sign of gradient of cross entropy loss w.r.t. input
+        maxIndexTemp = np.squeeze(np.argmax(roi_scores.detach().cpu().numpy(), axis=1))
+        labels = torch.tensor(maxIndexTemp).cuda()        
+
+        # Using temperature scaling
+        outputs = roi_scores / float(temper)
+        
+        loss = nn.CrossEntropyLoss(ignore_index=-1)(outputs, labels)
+        loss.backward()
+        
+        # Normalizing the gradient to binary in {0, 1}
+        gradient =  imgs.grad.sign()
+        normalize = tvtsf.Normalize(mean=[0.485, 0.456, 0.406], 
+                                    std=[0.229, 0.224, 0.225])
+        gradient = normalize(gradient[0]).unsqueeze_(0)
+
+        # # Adding small perturbations to images
+        perturbation = epsilon * gradient
 
         return imgs - perturbation
 
@@ -424,7 +466,7 @@ class FasterRCNN(nn.Module):
             img = at.totensor(img[None], cuda=True).float()
 
             if perturbation != 0:
-                img = self.input_perturbation(img, scale, epsilon=perturbation)
+                img = self.input_perturbation_mahalanobis(img, scale, epsilon=perturbation)
 
             roi_cls_loc, roi_scores, rois, _, head_feats = self.forward_with_penultimate_features(img, scale=scale)
 
@@ -478,8 +520,9 @@ class FasterRCNN(nn.Module):
         return bboxes, labels, dists
 
 
+
     # @nograd
-    def predict_with_features(self, imgs, sizes=None, visualize=False, perturbation=0):
+    def predict_odin(self, imgs, sizes=None, visualize=False, perturbation=0, temperature=1):
         """Same as predict function but predicts class of objects using Mahalanobis distance."""
         # self.eval()
         if visualize:
@@ -504,7 +547,79 @@ class FasterRCNN(nn.Module):
             img = at.totensor(img[None], cuda=True).float()
 
             if perturbation != 0:
-                img = self.input_perturbation(img, scale, epsilon=perturbation)
+                img = self.input_perturbation_odin(img, scale, epsilon=perturbation, temper=temperature)
+
+            roi_cls_loc, roi_scores, rois, _ = self.forward(img, scale=scale)
+            # roi_cls_loc, roi_scores, rois, _, head_feats = self.forward_with_all_features(img, scale=scale)
+
+            # We are assuming that batch size is 1.
+            roi_score = roi_scores.data
+            roi_cls_loc = roi_cls_loc.data
+            roi = at.totensor(rois) / scale
+
+            # Convert predictions to bounding boxes in image coordinates.
+            # Bounding boxes are scaled to the scale of the input images.
+            mean = t.Tensor(self.loc_normalize_mean).cuda(). \
+                repeat(self.n_class)[None]
+            std = t.Tensor(self.loc_normalize_std).cuda(). \
+                repeat(self.n_class)[None]
+
+            roi_cls_loc = (roi_cls_loc * std + mean)
+            roi_cls_loc = roi_cls_loc.view(-1, self.n_class, 4)
+            roi = roi.view(-1, 1, 4).expand_as(roi_cls_loc)
+            cls_bbox = loc2bbox(at.tonumpy(roi).reshape((-1, 4)),
+                                at.tonumpy(roi_cls_loc).reshape((-1, 4)))
+            cls_bbox = at.totensor(cls_bbox)
+            cls_bbox = cls_bbox.view(-1, self.n_class * 4)
+            # clip bounding box
+            cls_bbox[:, 0::2] = (cls_bbox[:, 0::2]).clamp(min=0, max=size[0])
+            cls_bbox[:, 1::2] = (cls_bbox[:, 1::2]).clamp(min=0, max=size[1])
+
+            prob = at.tonumpy(F.softmax(at.totensor(roi_score) / float(temperature), dim=1))
+
+            raw_cls_bbox = at.tonumpy(cls_bbox)
+            raw_prob = at.tonumpy(prob)
+            head_feats = [at.tonumpy(f) for f in head_feats]
+
+            bbox, label, score, head_feats = self._suppress_with_features(raw_cls_bbox, raw_prob, head_feats)
+
+            bboxes.append(bbox)
+            labels.append(label)
+            scores.append(score)
+            features.append(head_feats)
+
+        # self.use_preset('evaluate')
+
+        return bboxes, labels, scores, features
+
+
+    # @nograd
+    def predict_with_features(self, imgs, sizes=None, visualize=False):
+        """Same as predict function but predicts class of objects using Mahalanobis distance."""
+        # self.eval()
+        if visualize:
+            self.use_preset('visualize')
+            prepared_imgs = list()
+            sizes = list()
+            for img in imgs:
+                size = img.shape[1:]
+                img = preprocess(at.tonumpy(img))
+                prepared_imgs.append(img)
+                sizes.append(size)
+        else:
+             prepared_imgs = imgs 
+        bboxes = list()
+        labels = list()
+        scores = list()
+        features = list()
+        
+        for img, size in zip(prepared_imgs, sizes):
+            scale = img.shape[2] / size[1]
+
+            img = at.totensor(img[None], cuda=True).float()
+
+            # if perturbation != 0:
+            #     img = self.input_perturbation_odin(img, scale, epsilon=perturbation, temper=temperature)
 
             roi_cls_loc, roi_scores, rois, _, head_feats = self.forward_with_all_features(img, scale=scale)
 
@@ -531,6 +646,7 @@ class FasterRCNN(nn.Module):
             cls_bbox[:, 0::2] = (cls_bbox[:, 0::2]).clamp(min=0, max=size[0])
             cls_bbox[:, 1::2] = (cls_bbox[:, 1::2]).clamp(min=0, max=size[1])
 
+            # prob = at.tonumpy(F.softmax(at.totensor(roi_score) / float(temperature), dim=1))
             prob = at.tonumpy(F.softmax(at.totensor(roi_score), dim=1))
 
             raw_cls_bbox = at.tonumpy(cls_bbox)
@@ -544,7 +660,7 @@ class FasterRCNN(nn.Module):
             scores.append(score)
             features.append(head_feats)
 
-        self.use_preset('evaluate')
+        # self.use_preset('evaluate')
 
         return bboxes, labels, scores, features
 
