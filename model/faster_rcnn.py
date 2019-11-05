@@ -179,12 +179,18 @@ class FasterRCNN(nn.Module):
                 preset to use.
 
         """
+        # if preset == 'visualize':
+        #     self.nms_thresh = 0.3
+        #     self.score_thresh = 0.7
+        # elif preset == 'evaluate':
+        #     self.nms_thresh = 0.3
+        #     self.score_thresh = 0.05
         if preset == 'visualize':
-            self.nms_thresh = 0.3
-            self.score_thresh = 0.7
+            self.nms_thresh = 0.0
+            self.score_thresh = 0.00
         elif preset == 'evaluate':
-            self.nms_thresh = 0.3
-            self.score_thresh = 0.05
+            self.nms_thresh = 0.0
+            self.score_thresh = 0.00
         else:
             raise ValueError('preset must be visualize or evaluate')
 
@@ -425,7 +431,8 @@ class FasterRCNN(nn.Module):
         # Using temperature scaling
         outputs = roi_scores / float(temper)
         
-        loss = nn.CrossEntropyLoss(ignore_index=-1)(outputs, labels)
+        # TODO: See if getting rid of the ignore index makes results better
+        loss = nn.CrossEntropyLoss(ignore_index=-1)(outputs, labels)  # Should we ignore index=-1?
         loss.backward()
         
         # Normalizing the gradient to binary in {0, 1}
@@ -548,13 +555,14 @@ class FasterRCNN(nn.Module):
 
             h = self.extractor(img)
             rpn_locs, rpn_scores, rois, roi_indices, anchor = self.rpn(h, img.shape[2:], scale)
-    
-            # If ODIN parameters passed, perturb image
-            if perturbation != 0 or temperature != 1:
-                img = self.input_perturbation_odin(img, scale, epsilon=perturbation, temper=temperature)
-                h = self.extractor(img)
-                
             roi_cls_locs, roi_scores, head_feats = self.head(h, rois, roi_indices, return_features=True)
+
+            # If ODIN parameters passed, perturb image and get new scores
+            if perturbation != 0:
+                img = self.input_perturbation_odin(img, scale, epsilon=perturbation, temper=temperature)
+                with torch.no_grad():
+                    h = self.extractor(img)
+                    _, roi_scores = self.head(h, rois, roi_indices)
             
             # We are assuming that batch size is 1.
             roi_score = roi_scores.data
