@@ -10,8 +10,8 @@ class Config:
     voc_data_dir = "/home/tadenoud/Documents/kitti/VOC2012/"
     min_size = 600  # image resize
     max_size = 1000 # image resize
-    num_workers = 0
-    test_num_workers = 0
+    num_workers = 8
+    test_num_workers = 8
 
     num_fg_classes = len(CLASS_LABELS)
     
@@ -40,22 +40,24 @@ class Config:
 
     # preset
     data = 'voc'
-    pretrained_model = 'vgg16'
+    # pretrained_model = 'vgg16'
+    pretrained_model = 'vgg19bn'
 
     # training
-    epoch = 14
+    # epoch = 14
+    epoch = 50
 
 
     use_adam = False # Use Adam optimizer
     use_chainer = False # try match everything as chainer
-    use_drop = False # use dropout in RoIHead
+    use_drop = True # use dropout in RoIHead
     # debug
     debug_file = '/tmp/debugf'
 
     # train_num = 3712  # all classes
     # test_num = 3769  # all classes
-    train_num = 3429  # cars only
-    test_num = 3578  # cars only
+    # train_num = 3429  # cars only
+    # test_num = 3578  # cars only
     # train_num = 3452  # cars and vans
     # test_num = 3581  # cars and vans
     # train_num = 3012  # pedestrians and cyclists
@@ -64,6 +66,7 @@ class Config:
     
     # model
     load_path = None
+    # load_path = 'checkpoints/cars_drop/fasterrcnn_11060017_0.7454640828611436'
 
     caffe_pretrain = True # use caffe pretrained model instead of torchvision
     caffe_pretrain_path = 'checkpoints/vgg16_caffe.pth'

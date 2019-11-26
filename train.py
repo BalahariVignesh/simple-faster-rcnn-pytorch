@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from utils.config import opt
 from data.dataset import Dataset, TestDataset, inverse_normalize
-from model import FasterRCNNVGG16
+from model import FasterRCNNVGG16, FasterRCNNVGG19BN
 from torch.utils import data as data_
 from trainer import FasterRCNNTrainer
 from utils import array_tool as at
@@ -73,19 +73,23 @@ def train(**kwargs):
 
     dataset = Dataset(opt)
     print('load data')
-    dataloader = data_.DataLoader(dataset, \
-                                  batch_size=1, \
-                                  shuffle=True, \
-                                  # pin_memory=True,
+    dataloader = data_.DataLoader(dataset,
+                                  batch_size=1, 
+                                  shuffle=True, 
+                                  pin_memory=True,
                                   num_workers=opt.num_workers)
     testset = TestDataset(opt)
     test_dataloader = data_.DataLoader(testset,
                                        batch_size=1,
                                        num_workers=opt.test_num_workers,
-                                       shuffle=False, \
+                                       shuffle=False,
                                        pin_memory=True
                                        )
-    faster_rcnn = FasterRCNNVGG16()
+    if opt.pretrained_model == 'vgg16':
+        faster_rcnn = FasterRCNNVGG16()
+    elif opt.pretrained_model == 'vgg19bn':
+        faster_rcnn = FasterRCNNVGG19BN()
+         
     print('model construct completed')
     trainer = FasterRCNNTrainer(faster_rcnn).cuda()
     if opt.load_path:
@@ -96,7 +100,7 @@ def train(**kwargs):
     lr_ = opt.lr
     for epoch in range(opt.epoch):
         trainer.reset_meters()
-        for ii, (img, bbox_, label_, scale) in tqdm(enumerate(dataloader), total=opt.train_num):
+        for ii, (img, bbox_, label_, scale) in tqdm(enumerate(dataloader), total=len(dataset)):
             scale = at.scalar(scale)
             img, bbox, label = img.cuda().float(), bbox_.cuda(), label_.cuda()
             trainer.train_step(img, bbox, label, scale)
@@ -127,7 +131,7 @@ def train(**kwargs):
                 trainer.vis.text(str(trainer.rpn_cm.value().tolist()), win='rpn_cm')
                 # roi confusion matrix
                 trainer.vis.img('roi_cm', at.totensor(trainer.roi_cm.conf, False).float())
-        eval_result = eval(test_dataloader, faster_rcnn, test_num=opt.test_num)
+        eval_result = eval(test_dataloader, faster_rcnn, test_num=len(testset))
         trainer.vis.plot('test_map', eval_result['map'])
         lr_ = trainer.faster_rcnn.optimizer.param_groups[0]['lr']
         log_info = 'lr:{}, map:{},loss:{}'.format(str(lr_),
@@ -139,13 +143,13 @@ def train(**kwargs):
         if eval_result['map'] > best_map:
             best_map = eval_result['map']
             best_path = trainer.save(best_map=best_map)
-        if epoch == 9:
-            trainer.load(best_path)
-            trainer.faster_rcnn.scale_lr(opt.lr_decay)
-            lr_ = lr_ * opt.lr_decay
+        #if epoch == 9:
+        #    trainer.load(best_path)
+        #    trainer.faster_rcnn.scale_lr(opt.lr_decay)
+        #    lr_ = lr_ * opt.lr_decay
 
-        if epoch == 13: 
-            break
+        #if epoch == opt.epoch - 1: 
+        #    break
 
 
 if __name__ == '__main__':

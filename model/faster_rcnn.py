@@ -179,18 +179,18 @@ class FasterRCNN(nn.Module):
                 preset to use.
 
         """
-        # if preset == 'visualize':
-        #     self.nms_thresh = 0.3
-        #     self.score_thresh = 0.7
-        # elif preset == 'evaluate':
-        #     self.nms_thresh = 0.3
-        #     self.score_thresh = 0.05
         if preset == 'visualize':
-            self.nms_thresh = 0.0
-            self.score_thresh = 0.00
+            self.nms_thresh = 0.3
+            self.score_thresh = 0.7
         elif preset == 'evaluate':
-            self.nms_thresh = 0.0
-            self.score_thresh = 0.00
+            self.nms_thresh = 0.3
+            self.score_thresh = 0.05
+        # if preset == 'visualize':
+        #     self.nms_thresh = 0.0
+        #     self.score_thresh = 0.00
+        # elif preset == 'evaluate':
+        #     self.nms_thresh = 0.0
+        #     self.score_thresh = 0.00
         else:
             raise ValueError('preset must be visualize or evaluate')
 
@@ -745,7 +745,8 @@ class FasterRCNN(nn.Module):
         self.inv_mahal_cov = np.linalg.inv(self.mahal_cov + np.eye(len(self.mahal_cov)) + epsilon)
 
 
-    def train_ood(self, dataloader, num_train=opt.train_num):
+    def train_ood(self, dataloader):
+        num_train = len(dataloader.dataset)
         features = []
         gt_labels = []
 
