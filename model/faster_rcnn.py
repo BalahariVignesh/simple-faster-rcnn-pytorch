@@ -185,14 +185,22 @@ class FasterRCNN(nn.Module):
         elif preset == 'evaluate':
             self.nms_thresh = 0.3
             self.score_thresh = 0.05
-        # if preset == 'visualize':
-        #     self.nms_thresh = 0.0
-        #     self.score_thresh = 0.00
-        # elif preset == 'evaluate':
-        #     self.nms_thresh = 0.0
-        #     self.score_thresh = 0.00
-        else:
-            raise ValueError('preset must be visualize or evaluate')
+
+#         if preset == 'visualize':
+#             self.nms_thresh = 0.0
+#             self.score_thresh = 0.00
+#         elif preset == 'evaluate':
+#             self.nms_thresh = 0.0
+#             self.score_thresh = 0.00
+
+#        if preset == 'visualize':
+#            self.nms_thresh = 0.3
+#            self.score_thresh = 0.7
+#        elif preset == 'evaluate':
+#            self.nms_thresh = 0.3
+#            self.score_thresh = 0.7
+#        else:
+#            raise ValueError('preset must be visualize or evaluate')
 
     def _suppress(self, raw_cls_bbox, raw_prob):
         bbox = list()
@@ -562,7 +570,7 @@ class FasterRCNN(nn.Module):
                 img = self.input_perturbation_odin(img, scale, epsilon=perturbation, temper=temperature)
                 with torch.no_grad():
                     h = self.extractor(img)
-                    _, roi_scores = self.head(h, rois, roi_indices)
+                    _, roi_scores, head_feats = self.head(h, rois, roi_indices, return_features=True)
             
             # We are assuming that batch size is 1.
             roi_score = roi_scores.data

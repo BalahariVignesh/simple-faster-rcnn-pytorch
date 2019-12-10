@@ -4,7 +4,7 @@ CLASS_LABELS = (
 #     'van',
 #     'truck',
 #     'tram',
-#     'person',
+     'person',
 #     'cyclist',
 #     'misc',
 #     'dontcare'
@@ -18,7 +18,7 @@ VIS_LABELS = (
 #     'v',
 #     't',
 #     'tram',
-#     'p',
+     'p',
 #     'cyc',
 #     'misc'
 #     'dc'

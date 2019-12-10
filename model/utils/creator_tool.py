@@ -100,9 +100,11 @@ class ProposalTargetCreator(object):
         # Offset range of classes from [0, n_fg_class - 1] to [1, n_fg_class].
         # The label with value 0 is the background.
         gt_roi_label = label[gt_assignment] + 1
+        # Set label -1 for DontCare
+        gt_roi_label[gt_roi_label == 0] = -1
 
         # Select foreground RoIs as those with >= pos_iou_thresh IoU.
-        pos_index = np.where(max_iou >= self.pos_iou_thresh)[0]
+        pos_index = np.where((max_iou >= self.pos_iou_thresh) & (gt_roi_label != -1))[0]
         pos_roi_per_this_image = int(min(pos_roi_per_image, pos_index.size))
         if pos_index.size > 0:
             pos_index = np.random.choice(
@@ -111,7 +113,8 @@ class ProposalTargetCreator(object):
         # Select background RoIs as those within
         # [neg_iou_thresh_lo, neg_iou_thresh_hi).
         neg_index = np.where((max_iou < self.neg_iou_thresh_hi) &
-                             (max_iou >= self.neg_iou_thresh_lo))[0]
+                             (max_iou >= self.neg_iou_thresh_lo) &
+                             (gt_roi_label) != -1)[0]
         neg_roi_per_this_image = self.n_sample - pos_roi_per_this_image
         neg_roi_per_this_image = int(min(neg_roi_per_this_image,
                                          neg_index.size))
@@ -167,7 +170,7 @@ class AnchorTargetCreator(object):
         self.neg_iou_thresh = neg_iou_thresh
         self.pos_ratio = pos_ratio
 
-    def __call__(self, bbox, anchor, img_size):
+    def __call__(self, bbox, gt_label, anchor, img_size):
         """Assign ground truth supervision to sampled subset of anchors.
 
         Types of input arrays and output arrays are same.
@@ -203,7 +206,7 @@ class AnchorTargetCreator(object):
         inside_index = _get_inside_index(anchor, img_H, img_W)
         anchor = anchor[inside_index]
         argmax_ious, label = self._create_label(
-            inside_index, anchor, bbox)
+            inside_index, anchor, bbox, gt_label)
 
         # compute bounding box regression targets
         loc = bbox2loc(anchor, bbox[argmax_ious])
@@ -214,7 +217,7 @@ class AnchorTargetCreator(object):
 
         return loc, label
 
-    def _create_label(self, inside_index, anchor, bbox):
+    def _create_label(self, inside_index, anchor, bbox, gt_label):
         # label: 1 is positive, 0 is negative, -1 is dont care
         label = np.empty((len(inside_index),), dtype=np.int32)
         label.fill(-1)
@@ -230,6 +233,10 @@ class AnchorTargetCreator(object):
 
         # positive label: above threshold IOU
         label[max_ious >= self.pos_iou_thresh] = 1
+        
+        # Remove dontcare areas from pos and neg
+        mask = np.where(gt_label == -1)[0]
+        label[np.isin(argmax_ious, mask)] = -1
 
         # subsample positive labels if we have too many
         n_pos = int(self.pos_ratio * self.n_sample)
