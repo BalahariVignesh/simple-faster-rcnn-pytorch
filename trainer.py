@@ -161,7 +161,7 @@ class FasterRCNNTrainer(nn.Module):
 
         roi_cls_loss = nn.CrossEntropyLoss(ignore_index=-1)(roi_score, gt_roi_label.cuda()) # NOTE: ignore index needed here?
 
-        self.roi_cm.add(at.totensor(roi_score, False), gt_roi_label.data.long())
+        self.roi_cm.add(at.totensor(roi_score[gt_roi_label != -1], False), gt_roi_label[gt_roi_label != -1].data.long())
 
         losses = [rpn_loc_loss, rpn_cls_loss, roi_loc_loss, roi_cls_loss]
         losses = losses + [sum(losses)]

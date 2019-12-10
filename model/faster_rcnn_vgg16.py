@@ -57,7 +57,8 @@ class FasterRCNNVGG16(FasterRCNN):
     def __init__(self,
                  n_fg_class=opt.num_fg_classes,
                  ratios=[0.5, 1, 2],
-                 anchor_scales=[4, 8, 16, 32, 64]
+                 #anchor_scales=[4, 8, 16, 32, 64] 
+                 anchor_scales=[2, 4, 8, 16, 32, 64, 128]
                  ):
                  
         extractor, classifier = decom_vgg16()

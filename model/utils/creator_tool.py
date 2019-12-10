@@ -104,7 +104,7 @@ class ProposalTargetCreator(object):
         gt_roi_label[gt_roi_label == 0] = -1
 
         # Select foreground RoIs as those with >= pos_iou_thresh IoU.
-        pos_index = np.where((max_iou >= self.pos_iou_thresh) & (gt_roi_label != -1))[0]
+        pos_index = np.where(max_iou >= self.pos_iou_thresh)[0]
         pos_roi_per_this_image = int(min(pos_roi_per_image, pos_index.size))
         if pos_index.size > 0:
             pos_index = np.random.choice(
@@ -113,8 +113,7 @@ class ProposalTargetCreator(object):
         # Select background RoIs as those within
         # [neg_iou_thresh_lo, neg_iou_thresh_hi).
         neg_index = np.where((max_iou < self.neg_iou_thresh_hi) &
-                             (max_iou >= self.neg_iou_thresh_lo) &
-                             (gt_roi_label) != -1)[0]
+                             (max_iou >= self.neg_iou_thresh_lo))[0]
         neg_roi_per_this_image = self.n_sample - pos_roi_per_this_image
         neg_roi_per_this_image = int(min(neg_roi_per_this_image,
                                          neg_index.size))
@@ -236,7 +235,7 @@ class AnchorTargetCreator(object):
         
         # Remove dontcare areas from pos and neg
         mask = np.where(gt_label == -1)[0]
-        label[np.isin(argmax_ious, mask)] = -1
+        label[np.isin(argmax_ious, mask) & (max_ious >= self.neg_iou_thresh)] = -1
 
         # subsample positive labels if we have too many
         n_pos = int(self.pos_ratio * self.n_sample)

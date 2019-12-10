@@ -1,13 +1,13 @@
 # These labels should match the labels found in the dataset
 CLASS_LABELS = (
     'car',
-#     'van',
-#     'truck',
-#     'tram',
-     'person',
-#     'cyclist',
-#     'misc',
-#     'dontcare'
+#    'van',
+#    'truck',
+#    'tram',
+    'person',
+#    'cyclist',
+#    'misc',
+#    'dontcare'
 )
 
 # These labels used for visualization during training.
@@ -15,11 +15,11 @@ CLASS_LABELS = (
 #   class in CLASS_LABELS
 VIS_LABELS = (
     'c',
-#     'v',
-#     't',
-#     'tram',
-     'p',
-#     'cyc',
-#     'misc'
-#     'dc'
+#    'v',
+#    't',
+#    'tram',
+    'p',
+#    'cyc',
+#    'misc'
+#    'dc'
 )

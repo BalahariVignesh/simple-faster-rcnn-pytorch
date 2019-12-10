@@ -17,9 +17,9 @@ class Config:
     
     # Don't care class present (as in kitti data)
     # Should not be counted in num_fg_classes and be listed as the final label in VOC_BBOX_LABEL_NAMES
-    # Will treat all objects not present in VOC_BBOX_LABEL_NAMES as unlabeled and not backpropagate errors from these classes
     dont_care_class = True
 
+    # Will treat all objects not present in VOC_BBOX_LABEL_NAMES as background
     ignore_missing_labels = True
 
     # sigma for l1_smooth_loss
@@ -32,7 +32,6 @@ class Config:
     lr_decay = 0.1  # 1e-3 -> 1e-4
     lr = 1e-3
 
-
     # visualization
     env = 'faster-rcnn'  # visdom env
     port = 8097
@@ -40,8 +39,8 @@ class Config:
 
     # preset
     data = 'voc'
-    # pretrained_model = 'vgg16'
-    pretrained_model = 'vgg19bn'
+    pretrained_model = 'vgg16'
+    # pretrained_model = 'vgg19bn'
 
     # training
     # epoch = 14
@@ -53,20 +52,10 @@ class Config:
     use_drop = True # use dropout in RoIHead
     # debug
     debug_file = '/tmp/debugf'
-
-    # train_num = 3712  # all classes
-    # test_num = 3769  # all classes
-    # train_num = 3429  # cars only
-    # test_num = 3578  # cars only
-    # train_num = 3452  # cars and vans
-    # test_num = 3581  # cars and vans
-    # train_num = 3012  # pedestrians and cyclists
-    # test_num = 3185  # pedestrians and cyclists
-
     
     # model
     load_path = None
-    # load_path = 'checkpoints/cars_drop/fasterrcnn_11060017_0.7454640828611436'
+    # load_path = 'checkpoints/cars_pedestrians/fasterrcnn_12100356_0.4109218339275347'
 
     caffe_pretrain = True # use caffe pretrained model instead of torchvision
     caffe_pretrain_path = 'checkpoints/vgg16_caffe.pth'

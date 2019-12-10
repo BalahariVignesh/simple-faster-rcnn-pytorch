@@ -1,4 +1,8 @@
-#nohup python -m visdom.server &
+#!/bin/bash
+
+if [[ $# -gt 0 && "$1" == "visdom" ]]; then
+    nohup python -m visdom.server &
+fi
 
 #sensible-browser http://localhost:8097
 
