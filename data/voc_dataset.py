@@ -87,6 +87,25 @@ class VOCBboxDataset:
         self.label_names = CLASS_LABELS
         self.img_type = img_type
 
+        self.filter_ids()
+
+    def filter_ids(self):
+        """Remove images from dataset if they contain no FG objects."""
+        result = []
+        for id_ in self.ids:
+            anno = ET.parse(
+            os.path.join(self.data_dir, 'Annotations', id_ + '.xml'))
+            label = list()
+            for obj in anno.findall('object'):
+                name = obj.find('name').text.lower().strip()
+                if name in CLASS_LABELS:
+                    label.append(CLASS_LABELS.index(name))
+
+            if len(label) > 0:
+                result.append(id_)
+        
+        self.ids = result
+
     def __len__(self):
         return len(self.ids)
 
