@@ -67,7 +67,7 @@ class VOCBboxDataset:
     """
 
     def __init__(self, data_dir, split='trainval',
-                 use_difficult=False, return_difficult=False, img_type='png'
+                 use_difficult=False, return_difficult=True, img_type='png'
                  ):
 
         # if split not in ['train', 'trainval', 'val']:
