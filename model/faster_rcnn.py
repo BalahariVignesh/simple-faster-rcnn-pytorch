@@ -179,19 +179,19 @@ class FasterRCNN(nn.Module):
                 preset to use.
 
         """
+#        if preset == 'visualize':
+#            self.nms_thresh = 0.3
+#            self.score_thresh = 0.7
+#        elif preset == 'evaluate':
+#            self.nms_thresh = 0.3
+#            self.score_thresh = 0.05
+
         if preset == 'visualize':
             self.nms_thresh = 0.3
-            self.score_thresh = 0.7
+            self.score_thresh = 0.00
         elif preset == 'evaluate':
             self.nms_thresh = 0.3
-            self.score_thresh = 0.05
-
-#         if preset == 'visualize':
-#             self.nms_thresh = 0.0
-#             self.score_thresh = 0.00
-#         elif preset == 'evaluate':
-#             self.nms_thresh = 0.0
-#             self.score_thresh = 0.00
+            self.score_thresh = 0.00
 
 #        if preset == 'visualize':
 #            self.nms_thresh = 0.3
@@ -201,8 +201,31 @@ class FasterRCNN(nn.Module):
 #            self.score_thresh = 0.7
 #        else:
 #            raise ValueError('preset must be visualize or evaluate')
-
     def _suppress(self, raw_cls_bbox, raw_prob):
+        label = np.argmax(raw_prob, axis=1)
+        bbox = raw_cls_bbox.reshape((-1, self.n_class, 4))
+        bbox = bbox[np.arange(bbox.shape[0]),label,:]
+        label = label - 1
+        score = np.max(raw_prob, axis=1)
+        
+        # Do NMS to eliminate overlapping boxes
+        keep = non_maximum_suppression(
+                cp.array(bbox), self.nms_thresh, score)
+        keep = cp.asnumpy(keep)
+        bbox = bbox[keep]
+        label = label[keep]
+        score = score[keep]
+        
+        # Remove background boxes
+        keep = label != -1
+        bbox = bbox[keep]
+        score = score[keep]
+        label = label[keep]
+        
+        #import pdb; pdb.set_trace()
+        return bbox, label, score
+
+    def __suppress(self, raw_cls_bbox, raw_prob):
         bbox = list()
         label = list()
         score = list()
@@ -223,6 +246,7 @@ class FasterRCNN(nn.Module):
         bbox = np.concatenate(bbox, axis=0).astype(np.float32)
         label = np.concatenate(label, axis=0).astype(np.int32)
         score = np.concatenate(score, axis=0).astype(np.float32)
+         
         return bbox, label, score
 
 
