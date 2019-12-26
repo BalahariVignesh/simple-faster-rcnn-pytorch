@@ -275,13 +275,13 @@ class FasterRCNN(nn.Module):
         features = raw_head_feats
 
         # Do NMS to eliminate overlapping boxes
-        #keep = non_maximum_suppression(
-        #        cp.array(bbox), self.nms_thresh, score)
-        #keep = cp.asnumpy(keep)
-        #bbox = bbox[keep]
-        #label = label[keep]
-        #score = score[keep]
-        #features = [f[keep] for f in features]
+        keep = non_maximum_suppression(
+               cp.array(bbox), self.nms_thresh, score)
+        keep = cp.asnumpy(keep)
+        bbox = bbox[keep]
+        label = label[keep]
+        score = score[keep]
+        features = [f[keep] for f in features]
         
         # Remove background boxes
         keep = label != -1
