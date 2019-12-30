@@ -195,12 +195,12 @@ class FasterRCNN(nn.Module):
         score = np.max(raw_prob, axis=1)
         
         # Do NMS to eliminate overlapping boxes
-        keep = non_maximum_suppression(
-                cp.array(bbox), self.nms_thresh, score)
-        keep = cp.asnumpy(keep)
-        bbox = bbox[keep]
-        label = label[keep]
-        score = score[keep]
+#         keep = non_maximum_suppression(
+#                 cp.array(bbox), self.nms_thresh, score)
+#         keep = cp.asnumpy(keep)
+#         bbox = bbox[keep]
+#         label = label[keep]
+#         score = score[keep]
         
         # Remove background boxes
         keep = label != -1
@@ -210,31 +210,6 @@ class FasterRCNN(nn.Module):
         
         #import pdb; pdb.set_trace()
         return bbox, label, score
-
-    # def __suppress(self, raw_cls_bbox, raw_prob):
-    #     bbox = list()
-    #     label = list()
-    #     score = list()
-    #     # skip cls_id = 0 because it is the background class
-    #     for l in range(1, self.n_class):
-    #         cls_bbox_l = raw_cls_bbox.reshape((-1, self.n_class, 4))[:, l, :]
-    #         prob_l = raw_prob[:, l]
-    #         mask = prob_l > self.score_thresh
-    #         cls_bbox_l = cls_bbox_l[mask]
-    #         prob_l = prob_l[mask]
-    #         keep = non_maximum_suppression(
-    #             cp.array(cls_bbox_l), self.nms_thresh, prob_l)
-    #         keep = cp.asnumpy(keep)
-    #         bbox.append(cls_bbox_l[keep])
-    #         # The labels are in [0, self.n_class - 2].
-    #         label.append((l - 1) * np.ones((len(keep),)))
-    #         score.append(prob_l[keep])
-    #     bbox = np.concatenate(bbox, axis=0).astype(np.float32)
-    #     label = np.concatenate(label, axis=0).astype(np.int32)
-    #     score = np.concatenate(score, axis=0).astype(np.float32)
-         
-    #     return bbox, label, score
-
 
     def _suppress_with_penultimate(self, raw_cls_bbox, raw_prob, raw_head_feats):
         #import pdb; pdb.set_trace()
@@ -275,13 +250,13 @@ class FasterRCNN(nn.Module):
         features = raw_head_feats
 
         # Do NMS to eliminate overlapping boxes
-        keep = non_maximum_suppression(
-               cp.array(bbox), self.nms_thresh, score)
-        keep = cp.asnumpy(keep)
-        bbox = bbox[keep]
-        label = label[keep]
-        score = score[keep]
-        features = [f[keep] for f in features]
+#         keep = non_maximum_suppression(
+#                cp.array(bbox), self.nms_thresh, score)
+#         keep = cp.asnumpy(keep)
+#         bbox = bbox[keep]
+#         label = label[keep]
+#         score = score[keep]
+#         features = [f[keep] for f in features]
         
         # Remove background boxes
         keep = label != -1
@@ -292,38 +267,7 @@ class FasterRCNN(nn.Module):
 
         #import pdb; pdb.set_trace()
         return bbox, label, score, features
-
-
-
-    # def __suppress_with_features(self, raw_cls_bbox, raw_prob, raw_head_feats):
-    #     # import pdb; pdb.set_trace()
-    #     bbox = list()
-    #     label = list()
-    #     score = list()
-    #     features = list()
-    #     # skip cls_id = 0 because it is the background class
-    #     for l in range(1, self.n_class):
-    #         cls_bbox_l = raw_cls_bbox.reshape((-1, self.n_class, 4))[:, l, :]
-    #         feats_l = raw_head_feats
-    #         prob_l = raw_prob[:, l]
-    #         mask = prob_l > self.score_thresh
-    #         cls_bbox_l = cls_bbox_l[mask]
-    #         feats_l = [f[mask] for f in feats_l]
-    #         prob_l = prob_l[mask]
-    #         keep = non_maximum_suppression(
-    #             cp.array(cls_bbox_l), self.nms_thresh, prob_l)
-    #         keep = cp.asnumpy(keep)
-    #         bbox.append(cls_bbox_l[keep])
-    #         # The labels are in [0, self.n_class - 2].
-    #         label.append((l - 1) * np.ones((len(keep),)))
-    #         score.append(prob_l[keep])
-    #         features.append([f[keep] for f in feats_l])
-    #     bbox = np.concatenate(bbox, axis=0).astype(np.float32)
-    #     label = np.concatenate(label, axis=0).astype(np.int32)
-    #     score = np.concatenate(score, axis=0).astype(np.float32)
-    #     features = [np.concatenate(list(f[i] for f in features), axis=0) for i in range(len(features[0]))]
-    #     return bbox, label, score, features
-        
+     
         
     def _reform_raw_cls_bbox(self, raw_cls_bbox, raw_prob):
         """Reforms raw features to bboxes without non-maximum suppression."""
