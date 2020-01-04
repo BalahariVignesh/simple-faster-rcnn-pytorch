@@ -242,11 +242,11 @@ class FasterRCNN(nn.Module):
         features = [f[keep] for f in features]
         
         # Remove background boxes
-        keep = label != -1
-        bbox = bbox[keep]
-        score = score[keep]
-        label = label[keep]
-        features = [f[keep] for f in features]
+#         keep = label != -1
+#         bbox = bbox[keep]
+#         score = score[keep]
+#         label = label[keep]
+#         features = [f[keep] for f in features]
 
         #import pdb; pdb.set_trace()
         return bbox, label, score, features
