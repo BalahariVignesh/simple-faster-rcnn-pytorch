@@ -166,6 +166,11 @@ class IndiaDrivingDataset(Dataset):
         label_name = os.path.join(self.root_dir,'Annotations', self.file_list[idx].strip() + '.xml')
         bboxes, labels = get_annotations(label_name)
         labels = np.array(idd_labels_str_to_int(labels)).astype(np.int)
+        
+        if self.keep_labels is not None:
+            keep = np.array([l in self.keep_labels for l in labels])
+            bboxes = bboxes[keep]
+            labels = labels[keep]
 
         if self.transform:
             img = self.transform(img)
