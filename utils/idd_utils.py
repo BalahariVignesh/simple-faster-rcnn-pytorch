@@ -129,17 +129,33 @@ def read_image(path, dtype=np.float32, color=True):
     
 
 class IndiaDrivingDataset(Dataset):
-    def __init__(self, root_dir, split, transform=None):
+    def __init__(self, root_dir, split, transform=None, keep_labels=None):
         super().__init__()
         self.root_dir = os.path.realpath(root_dir)
         self.split = split + ".txt"
         self.transform = transform
+        self.keep_labels = keep_labels
         
         assert(os.path.exists(os.path.join(self.root_dir, self.split)))
         
         with open(os.path.join(self.root_dir, self.split), 'r') as f:
                self.file_list = f.readlines()
         
+        if self.keep_labels is not None:
+            self._filter_file_list()
+        
+    def _filter_file_list(self):
+        result = []
+        for idx in range(len(self.file_list)):
+            label_name = os.path.join(self.root_dir,'Annotations', self.file_list[idx].strip() + '.xml')
+            _, labels = get_annotations(label_name)
+            labels = np.array(idd_labels_str_to_int(labels)).astype(np.int)
+            
+            if len(set(labels).intersection(set(self.keep_labels))) > 0:
+                result.append(self.file_list[idx].strip())
+                
+        self.file_list = result
+    
     def __len__(self):
         return len(self.file_list)
            
