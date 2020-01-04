@@ -132,3 +132,5 @@ weird_cars/
 *.db
 
 *.gz
+
+datasets/
