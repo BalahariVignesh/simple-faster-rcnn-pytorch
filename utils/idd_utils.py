@@ -129,19 +129,20 @@ def read_image(path, dtype=np.float32, color=True):
     
 
 class IndiaDrivingDataset(Dataset):
-    def __init__(self, root_dir, split, transform=None, keep_labels=None):
+    def __init__(self, root_dir, split, transform=None, keep_labels=None, filter_no_target_imgs=False):
         super().__init__()
         self.root_dir = os.path.realpath(root_dir)
         self.split = split + ".txt"
         self.transform = transform
         self.keep_labels = keep_labels
+        self.filter_no_target_imgs = filter_no_target_imgs
         
         assert(os.path.exists(os.path.join(self.root_dir, self.split)))
         
         with open(os.path.join(self.root_dir, self.split), 'r') as f:
                self.file_list = f.readlines()
         
-        if self.keep_labels is not None:
+        if self.keep_labels is not None and self.filter_no_target_imgs:
             self._filter_file_list()
         
     def _filter_file_list(self):
