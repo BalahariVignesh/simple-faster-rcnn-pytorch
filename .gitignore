@@ -134,3 +134,6 @@ weird_cars/
 *.gz
 
 datasets/
+
+idd_fp_detection/scores_labels_*
+idd_fn_detection/scores_labels_*
